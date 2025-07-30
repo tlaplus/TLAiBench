@@ -1,0 +1,1 @@
+You have N boxes numbered 1 to N, arranged on a line. A cat is hiding in one of the boxes. Every night, she moves to an adjacent box, and every morning, you have one chance to inspect a box to find her. How do you find the cat?

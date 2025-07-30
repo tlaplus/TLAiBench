@@ -1,0 +1,5 @@
+A coffee can contains some black beans and white beans. The following process is to be repeated as long as possible:
+                                                                    
+Randomly select two beans from the can. If they are the same color, throw them out, but put another black bean in. (Enough extra black beans are available to do this.) If they are different colors, place the white one back into the can and throw the black one away.          
+                                                                    
+Execution of this process reduces the number of beans in the can by one. Repetition of this process must terminate with exactly one bean in the can, for then two beans cannot be selected. The question is: what, if anything, can be said about the color of the final bean based on the number of white beans and the number of black beans initially in the can?                                                                   

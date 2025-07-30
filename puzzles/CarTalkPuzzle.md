@@ -1,0 +1,1 @@
+A farmer has a 40 pound stone and a balance scale.  How can he break the stone into 4 pieces so that, using those pieces and the balance scale, he can weigh out any integral number of pounds of corn from 1 pound through 40 pounds.

@@ -1,0 +1,3 @@
+# 4 people, a bridge and a flashlight problem
+
+Four people need to cross a bridge at night. The bridge is only strong enough to hold at most two people at once. Because it is night a flashlight must be used for all crossings. It takes person A ten minutes to cross, person B five minutes, person C two minutes, and person D one minute. If two cross at the same time they must walk at the slower man's pace. How can you get everyone across in 17 minutes?
