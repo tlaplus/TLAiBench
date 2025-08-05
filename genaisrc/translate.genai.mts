@@ -3,15 +3,6 @@ script({
     description: "Translate a natural language description of a TLA+ specification into a TLA+ specification.",
     files: ["puzzles/DieHard.md"],
     systemSafety: false,
-    system: [
-        "system.fs_read_file",
-        //     "system.files",
-        //     "system.fs_find_files",
-        //     "system.do_not_explain",
-        //     "system.tool_calls",
-        //     "system.tools"
-    ],
-    // fallbackTools: false,
     // model: "github:openai/o3-mini"
     temperature: 0,
     // https://microsoft.github.io/genaiscript/reference/scripts/inline-prompts/#inline-only-scripts
@@ -19,27 +10,9 @@ script({
     // https://microsoft.github.io/genaiscript/reference/scripts/inline-prompts/#concurrency
     modelConcurrency: { "github_copilot_chat:current": 1 }
 })
-// defTool({
-//     tla: {
-//         url: "http://localhost:59071/mcp",
-//         type: "http"
-//     }
-// })
-// defTool(
-//     "fs_write_file",
-//     "Writes text to a file in the file system. Use this to create or update files before using the TLA+ MCP tools.",
-//     {
-//         filename: { type: "string" },
-//         content: { type: "string" },
-//     },
-//     async ({ filename, content }) => {
-//         await workspace.writeText(filename, content);
-//         return { success: true, filename };
-//     }
-// )
 
-// Helper function to set up common tools for TLA+ contexts
-function setupTLATools(ctx) {
+// https://microsoft.github.io/genaiscript/reference/scripts/tools/#reusing-tools-in-system-scripts
+function setupTLATools(ctx: ChatGenerationContext) {
     // The TLA+ MCP tools have to be started separately.
     ctx.defTool({
         tla: {
@@ -65,6 +38,13 @@ function setupTLATools(ctx) {
 // ----------------- //
 const { dbg } = env
 
+// Assert that TLC can be run locally
+const shellOutput = await host.exec(`tlc`, []);
+if (shellOutput.exitCode !== 1) {
+    console.error(`TLC exited with code ${shellOutput.exitCode}. Output: ${shellOutput.stdout}`);
+    cancel(`TLC did not exit with expected exit code. Check the output for details.`);
+}
+
 // Iterate over each file provided by the environment
 for (const file of env.files) {
 
@@ -77,6 +57,10 @@ for (const file of env.files) {
     const tlaFile = fileName + ".tla";
     const cfgFile = fileName + ".cfg";
 
+    // TODO Import the TLA+ rules with: https://microsoft.github.io/genaiscript/reference/scripts/import-template/
+    // Fetch TLC's explain files could be done with: https://microsoft.github.io/genaiscript/reference/scripts/fetch/
+    // Alternatively, GenAIScript's vector search could be used to find the relevant rules: https://microsoft.github.io/genaiscript/reference/scripts/vector-search/
+
     const synthesize = await runPrompt(
         (ctx) => {
             setupTLATools(ctx);
@@ -86,9 +70,19 @@ for (const file of env.files) {
     dbg(synthesize);
     console.log(`Created TLA+ specification: ${synthesize}`);
 
+    // Run TLC manually to check that it exits with the expected exit code.
+    // Note: The exit code 12 indicates that TLC found a counterexample, which is what we expect for this task.
+    // If TLC does not find a counterexample, it will exit with a different code, and we can cancel the refinement steps.
+    const shellOutput = await host.exec(`tlc`, [`${tlaFile}`, `-config`, `${cfgFile}`]);
+    if (shellOutput.exitCode !== 12) {
+        console.error(`TLC exited with code ${shellOutput.exitCode}. Output: ${shellOutput.stdout}`);
+        cancel(`TLC did not exit with expected exit code. Check the output for details.`);
+    }
+    // workspace.stat
+
     // Copy the gold standard solution file from the gold/ directory to the workspace root.
-    const goldFile = `gold/${fileName}Gold.tla`;
-    await workspace.copyFile(goldFile, `${fileName}Gold.tla`)
+    const goldFile = `${fileName}Gold.tla`;
+    await workspace.copyFile(`gold/${fileName}Gold.tla`, goldFile)
 
     // -------- Verify refinement of counterexample with gold standard spec -------- //
 
@@ -96,7 +90,7 @@ for (const file of env.files) {
     const traceRefinement = await runPrompt(
         (ctx) => {
             setupTLATools(ctx);
-            ctx.$`Use the TLC model checker via the **tla_tlaplus_mcp_tlc_check** tool with the **-generateSpecTE** option to serialize a counterexample trace for the TLA+ specification ${tlaFile}. Save this trace to a file named ${traceFile}, where 123456789 represents a timestamp. Next, create a refinement mapping from ${traceFile} to the gold-standard specification ${goldFile}. Parse the refinement using the **tla_tlaplus_mcp_sany_parse** tool. If parsing fails, revise the refinement until it is valid. Once the refinement is correctly parsed, use the **tla_tlaplus_mcp_tlc_check** tool to verify whether the refinement holds.`
+            ctx.$`Use the TLC model checker via the **tla_tlaplus_mcp_tlc_check** tool with the **-generateSpecTE** option to serialize a counterexample trace to a file named ${traceFile} (where 123456789 represents a timestamp) for the TLA+ specification ${tlaFile}. You must not modify either specification directly. Next, create a refinement mapping from ${traceFile} to the gold-standard specification ${goldFile}. Parse the refinement using the **tla_tlaplus_mcp_sany_parse** tool. If parsing fails, revise the refinement until it is valid. Once the refinement is correctly parsed, use the **tla_tlaplus_mcp_tlc_check** tool to verify whether the refinement holds.`
         },
         { model: "github_copilot_chat:current", system: ["system.fs_read_file", "system.fs_find_files"] });
     dbg(traceRefinement);
