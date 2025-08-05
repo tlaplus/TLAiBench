@@ -7,7 +7,7 @@
 (* First, we write a spec that describes all allowable behaviors of our    *)
 (* heroes.                                                                  *)
 (***************************************************************************)
-EXTENDS Naturals
+EXTENDS Naturals, TLC
   (*************************************************************************)
   (* This statement imports the definitions of the ordinary operators on   *)
   (* natural numbers, such as +.                                           *)
@@ -133,4 +133,17 @@ NotSolved == big # 4
 (* behavior is the desired solution.  (Because TLC uses a breadth-first    *)
 (* search, it will find the shortest solution.)                            *)
 (***************************************************************************)
+
+PostCondition ==
+    \* Check that refinement is verified (cfg file will have something like
+    \* PROPERTY Refinement).
+    /\ TLCGet("spec").impliedinits # {}
+    \* Known state space of this puzzle.
+    /\ TLCGet("spec").impliedactions # {}
+    /\ TLCGet("stats").generated = 97
+    /\ TLCGet("stats").distinct = 16
+    /\ TLCGet("stats").diameter = 8
+    /\ TLCGet("stats").initial = 1
+    /\ TLCGet("stats").queue = 0
+
 =============================================================================
