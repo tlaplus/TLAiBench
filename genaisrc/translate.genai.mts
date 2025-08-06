@@ -19,19 +19,6 @@ function setupTLATools(ctx: ChatGenerationContext) {
             type: "http"
         }
     });
-    // See https://github.com/microsoft/genaiscript/issues/1809 why we define fs_write_file.
-    ctx.defTool(
-        "fs_write_file",
-        "Writes text to a file in the file system. Use this to create or update files before using the TLA+ MCP tools.",
-        {
-            filename: { type: "string" },
-            content: { type: "string" },
-        },
-        async ({ filename, content }) => {
-            await workspace.writeText(filename, content);
-            return { success: true, filename };
-        }
-    );
 }
 
 // ----------------- //
@@ -65,7 +52,7 @@ for (const file of env.files) {
             setupTLATools(ctx);
             ctx.$`Create a TLA+ specification in a new file ${tlaFile} that formalizes the problem described in ${file.filename}, including all relevant requirements and constraints. Use the **fs_write_file tool** to write the specification. Then, parse the specification using the TLC model checker via the **tla_tlaplus_mcp_sany_parse** tool. If parsing fails, revise the specification until it parses successfully. Next, generate a TLC configuration file ${cfgFile}. Use the **tla_tlaplus_mcp_sany_symbol** tool to identify the relevant symbols needed in the config file. Finally, verify the specification using the TLC model checker via the **tla_tlaplus_mcp_tlc_check** tool and determine whether the expected counterexample is found.`
         },
-        { model: "github_copilot_chat:current", system: ["system.fs_read_file"] });
+        { model: "github_copilot_chat:current", system: ["system.fs_read_file", "system.fs_write_file"] });
     dbg(synthesize);
     console.log(`Created TLA+ specification: ${synthesize}`);
 
@@ -91,7 +78,7 @@ for (const file of env.files) {
             setupTLATools(ctx);
             ctx.$`Use the TLC model checker via the **tla_tlaplus_mcp_tlc_check** tool with the **-generateSpecTE** option to serialize a counterexample trace to a file named ${traceFile} (where 123456789 represents a timestamp) for the TLA+ specification ${tlaFile}. You must not modify either specification directly. Next, create a refinement mapping from ${traceFile} to the gold-standard specification ${goldFile}. Parse the refinement using the **tla_tlaplus_mcp_sany_parse** tool. If parsing fails, revise the refinement until it is valid. Once the refinement is correctly parsed, use the **tla_tlaplus_mcp_tlc_check** tool to verify whether the refinement holds.`
         },
-        { model: "github_copilot_chat:current", system: ["system.fs_read_file", "system.fs_find_files"] });
+        { model: "github_copilot_chat:current", system: ["system.fs_read_file", "system.fs_write_file", "system.fs_find_files"] });
     dbg(traceRefinement);
     console.log(`Created TLA+ trace refinement: ${traceRefinement}`);
 
@@ -103,7 +90,7 @@ for (const file of env.files) {
             setupTLATools(ctx);
             ctx.$`Define a refinement mapping from the specification ${tlaFile} to the specification ${fileName}Gold.tla. You must not modify either specification directly. Instead, create a new TLA+ module ${refTLAFile} that extends ${tlaFile} and instantiates ${goldFile}. Parse the refinement module using the **tla_tlaplus_mcp_sany_parse** tool. If parsing fails, revise the module until it is valid. Finally, use the **tla_tlaplus_mcp_tlc_check** tool to check whether the refinement mapping holds.`
         },
-        { model: "github_copilot_chat:current", system: ["system.fs_read_file"] });
+        { model: "github_copilot_chat:current", system: ["system.fs_read_file", "system.fs_write_file"] });
     dbg(fullRefinement);
     console.log(`Created TLA+ full refinement: ${fullRefinement}`);
 }
