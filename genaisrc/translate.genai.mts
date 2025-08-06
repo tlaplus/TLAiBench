@@ -72,11 +72,11 @@ for (const file of env.files) {
 
     // -------- Verify refinement of counterexample with gold standard spec -------- //
 
-    const traceFile = `${fileName}_TTrace_123456789.tla`;
+    const traceFile = `${fileName}_TTrace.tla`;
     const traceRefinement = await runPrompt(
         (ctx) => {
             setupTLATools(ctx);
-            ctx.$`Use the TLC model checker via the **tla_tlaplus_mcp_tlc_check** tool with the **-generateSpecTE** option to serialize a counterexample trace to a file named ${traceFile} (where 123456789 represents a timestamp) for the TLA+ specification ${tlaFile}. You must not modify either specification directly. Next, create a refinement mapping from ${traceFile} to the gold-standard specification ${goldFile}. Parse the refinement using the **tla_tlaplus_mcp_sany_parse** tool. If parsing fails, revise the refinement until it is valid. Once the refinement is correctly parsed, use the **tla_tlaplus_mcp_tlc_check** tool to verify whether the refinement holds.`
+            ctx.$`Use the TLC model checker via the **tla_tlaplus_mcp_tlc_check** tool with the **-dumptrace tlcTESpec ${traceFile}** option to serialize a counterexample trace to a file named ${traceFile} for the TLA+ specification ${tlaFile}. Next, create a refinement mapping from ${traceFile} to the gold-standard specification ${goldFile} in a new spec that extends ${traceFile} and refines ${goldFile}. You must not modify ${traceFile} or ${goldFile} specification directly.  Parse the refinement using the **tla_tlaplus_mcp_sany_parse** tool. If parsing fails, revise the refinement until it is valid. Once the refinement is correctly parsed, use the **tla_tlaplus_mcp_tlc_check** tool to verify whether the refinement holds.`
         },
         { model: "github_copilot_chat:current", system: ["system.fs_read_file", "system.fs_write_file", "system.fs_find_files"] });
     dbg(traceRefinement);
