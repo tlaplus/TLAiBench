@@ -5,7 +5,7 @@ script({
     systemSafety: false,
     temperature: 0,
     // https://microsoft.github.io/genaiscript/reference/scripts/inline-prompts/#inline-only-scripts
-    model: "none",  // "github:openai/o3-mini"
+    model: "none",
     // https://microsoft.github.io/genaiscript/reference/scripts/inline-prompts/#concurrency
     modelConcurrency: { "github_copilot_chat:current": 1 }
 })
