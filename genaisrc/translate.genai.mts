@@ -3,10 +3,9 @@ script({
     description: "Translate a natural language description of a TLA+ specification into a TLA+ specification.",
     files: ["puzzles/DieHard.md"],
     systemSafety: false,
-    // model: "github:openai/o3-mini"
     temperature: 0,
     // https://microsoft.github.io/genaiscript/reference/scripts/inline-prompts/#inline-only-scripts
-    model: "none",
+    model: "none",  // "github:openai/o3-mini"
     // https://microsoft.github.io/genaiscript/reference/scripts/inline-prompts/#concurrency
     modelConcurrency: { "github_copilot_chat:current": 1 }
 })
@@ -39,10 +38,10 @@ function setupTLATools(ctx: ChatGenerationContext) {
 const { dbg } = env
 
 // Assert that TLC can be run locally
-const shellOutput = await host.exec(`tlc`, []);
+const shellOutput = await host.exec(`java`, ['-jar', 'tla2tools.jar']);
 if (shellOutput.exitCode !== 1) {
     console.error(`TLC exited with code ${shellOutput.exitCode}. Output: ${shellOutput.stdout}`);
-    cancel(`TLC did not exit with expected exit code. Check the output for details.`);
+    cancel(`TLC installation missing. TLC did not exit with expected exit code. Check the output for details.`);
 }
 
 // Iterate over each file provided by the environment
