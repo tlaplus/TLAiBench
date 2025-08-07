@@ -88,7 +88,7 @@ jobs:
 
       - name: Run GenAIscript on the logic puzzles.
         ## Install genaiscript runtime: https://microsoft.github.io/genaiscript/reference/cli/
-        run: npx --yes genaiscript run genaisrc/translate.genai.mts
+        run: npx --yes genaiscript run --provider github genaisrc/translate.genai.mts
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
