@@ -34,12 +34,12 @@ jobs:
       - name: Install VSCode
         run: |
           sudo apt-get update
-          sudo apt-get install -y apt-transport-https
+          sudo apt-get install --no-install-recommends -y apt-transport-https
           curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
           sudo mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg
           echo "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" | sudo tee /etc/apt/sources.list.d/vscode.list
           sudo apt-get update
-          sudo apt-get install -y code xvfb
+          sudo apt-get install --no-install-recommends -y code xvfb
 
       - name: Launch TLA+ VSCode extension hosting our MCP servers
         run: |
