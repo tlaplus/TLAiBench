@@ -84,7 +84,7 @@ for (const file of env.files) {
     // Run TLC manually to check that it exits with the expected exit code.
     // Note: The exit code 12 indicates that TLC found a counterexample, which is what we expect for this task.
     // If TLC does not find a counterexample, it will exit with a different code, and we can cancel the refinement steps.
-    await runTLCAndValidate(tlaFile, cfgFile, "Synthesized spec validation", (exitCode) => exitCode !== 12);
+    await runTLCAndValidate(tlaFile, cfgFile, "Synthesized spec validation", (exitCode) => exitCode === 12);
 
     // ------------------------------------------------------------------------------ //
     // ------ Synthesize refinement of counterexample with gold standard spec ------  //
@@ -112,11 +112,11 @@ for (const file of env.files) {
 
     // Check if the trace refinement holds by running TLC on the trace file.
     // This is expected to pass, as the trace in the trace file should be a valid behavior of the gold standard specification. 
-    await runTLCAndValidate(traceRefFile, traceCfgFile, "Trace refinement validation", (exitCode) => exitCode !== 0);
+    await runTLCAndValidate(traceRefFile, traceCfgFile, "Trace refinement validation", (exitCode) => exitCode === 0);
     // However, it might pass for the wrong reason, so we need to check that TLC actually checked a refinement.
-    await runTLCAndValidate(traceRefFile, traceCfgFile, "Trace refinement validation with refinement postcondition", (exitCode) => exitCode !== 0, [`-postcondition`, `${goldFile}!Refinement`]);
+    await runTLCAndValidate(traceRefFile, traceCfgFile, "Trace refinement validation with refinement postcondition", (exitCode) => exitCode === 0, [`-postcondition`, `${goldFile}!Refinement`]);
     // Also check that the refinement has the expected state-space statistics.
-    await runTLCAndValidate(traceRefFile, traceCfgFile, "Trace refinement validation with stats postcondition", (exitCode) => exitCode !== 0, [`-postcondition`, `${goldFile}!Stats`]);
+    await runTLCAndValidate(traceRefFile, traceCfgFile, "Trace refinement validation with stats postcondition", (exitCode) => exitCode === 0, [`-postcondition`, `${goldFile}!Stats`]);
 
     // ------------------------------------------------------------------------------ //
     // -------- Synthesize full refinement of gold standard spec -------- //
@@ -137,7 +137,7 @@ for (const file of env.files) {
     // ------ Validate TLA+ full refinement specification ------  //
     // ------------------------------------------------------------------------------ //
 
-    await runTLCAndValidate(traceRefFile, traceCfgFile, "Full refinement validation", (exitCode) => exitCode !== 0);
-    await runTLCAndValidate(traceRefFile, traceCfgFile, "Full refinement validation with refinement postcondition", (exitCode) => exitCode !== 0, [`-postcondition`, `${goldFile}!Refinement`]);
-    await runTLCAndValidate(traceRefFile, traceCfgFile, "Full refinement validation with stats postcondition", (exitCode) => exitCode !== 0, [`-postcondition`, `${goldFile}!Stats`]);
+    await runTLCAndValidate(traceRefFile, traceCfgFile, "Full refinement validation", (exitCode) => exitCode === 0);
+    await runTLCAndValidate(traceRefFile, traceCfgFile, "Full refinement validation with refinement postcondition", (exitCode) => exitCode === 0, [`-postcondition`, `${goldFile}!Refinement`]);
+    await runTLCAndValidate(traceRefFile, traceCfgFile, "Full refinement validation with stats postcondition", (exitCode) => exitCode === 0, [`-postcondition`, `${goldFile}!Stats`]);
 }
