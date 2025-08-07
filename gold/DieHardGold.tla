@@ -134,16 +134,21 @@ NotSolved == big # 4
 (* search, it will find the shortest solution.)                            *)
 (***************************************************************************)
 
-PostCondition ==
+Refinement ==
     \* Check that refinement is verified (cfg file will have something like
     \* PROPERTY Refinement).
     /\ TLCGet("spec").impliedinits # {}
-    \* Known state space of this puzzle.
     /\ TLCGet("spec").impliedactions # {}
+
+Stats ==
+    \* Known state space of this puzzle.
     /\ TLCGet("stats").generated = 97
     /\ TLCGet("stats").distinct = 16
     /\ TLCGet("stats").diameter = 8
     /\ TLCGet("stats").initial = 1
     /\ TLCGet("stats").queue = 0
 
+PostCondition ==
+    /\ Refinement
+    /\ Stats
 =============================================================================
