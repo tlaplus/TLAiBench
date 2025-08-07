@@ -1,0 +1,75 @@
+name: TLAi Benchmarks
+
+on: [push, workflow_dispatch]
+
+## https://microsoft.github.io/genaiscript/reference/github-actions/
+## https://docs.github.com/en/github-models/use-github-models/integrating-ai-models-into-your-development-workflow#using-ai-models-with-github-actions
+permissions:
+    models: read
+
+jobs:
+  benchmarks:
+    name: TLAi Benchmarks
+
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v4
+        with:
+            ## All history for git diff below to succeed.
+            fetch-depth: 0
+
+      - name: Install VSCode
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apt-transport-https
+          curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
+          sudo mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg
+          echo "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" | sudo tee /etc/apt/sources.list.d/vscode.list
+          sudo apt-get update
+          sudo apt-get install -y code libgtk-3-dev xvfb
+
+      - name: Get (nightly) TLC
+        run: wget https://nightly.tlapl.us/dist/tla2tools.jar
+
+      - name: Get (nightly) CommunityModules
+        run: wget https://github.com/tlaplus/CommunityModules/releases/latest/download/CommunityModules-deps.jar
+
+      - name: Setup NodeJS
+        ## https://github.com/actions/setup-node
+        uses: actions/setup-node@v4
+        with:
+            node-version: "24"
+
+      - name: Setup VSCode extension (which hosts the TLA+ MCP servers.  Alternatively, create cmd-line MCP servers)
+        run: |
+          export XDG_RUNTIME_DIR=/run/user/$(id -u)
+          export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+          dbus-daemon --session --address=$DBUS_SESSION_BUS_ADDRESS --nofork --nopidfile --syslog-only &
+          mkdir ~/.vscode && echo '{ "disable-hardware-acceleration": true, "tlaplus.mcp.port": 59071 }' > ~/.vscode/argv.json
+          xvfb-run -a code --install-extension tlaplus.vscode-ide
+          xvfb-run -a code . &
+
+      - name: Listing model configuration
+        ## https://microsoft.github.io/genaiscript/reference/cli/#listing-model-configuration
+        run: npx genaiscript scripts model genaisrc/translate.genai.mts
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run GenAIscript on the logic puzzles.
+        ## Install genaiscript runtime: https://microsoft.github.io/genaiscript/reference/cli/
+        run: npx --yes genaiscript run genaisrc/translate.genai.mts
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Archive generated TLA+ specs (if any)
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks
+          path: |
+            *.tla
+            *.cfg
