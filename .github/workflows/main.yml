@@ -54,6 +54,10 @@ jobs:
           xvfb-run -a code --install-extension tlaplus.vscode-ide
           xvfb-run -a code . &
 
+      - name: Validate TLA MCP servers
+        run: |  
+          nc -vz localhost 59071
+
       - name: Listing model configuration
         ## https://microsoft.github.io/genaiscript/reference/cli/#listing-model-configuration
         run: npx genaiscript scripts model genaisrc/translate.genai.mts
