@@ -73,3 +73,5 @@ jobs:
           path: |
             *.tla
             *.cfg
+            !gold/*.tla
+            !gold/*.cfg
