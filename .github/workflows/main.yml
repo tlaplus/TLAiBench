@@ -100,7 +100,7 @@ jobs:
       - name: Archive generated TLA+ specs (if any)
         uses: actions/upload-artifact@v4
         with:
-          name: benchmarks
+          name: TLAiBenchResults
           path: |
             .genaiscript/*
             *.tla
