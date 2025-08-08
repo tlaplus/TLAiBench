@@ -23,6 +23,16 @@ jobs:
         shell: bash
 
     steps:
+      ##
+      ## Before executing the steps below—and burning extra carbon—verify that the action’s LLM parameter corresponds to a model hosted by GitHub Models.
+      - name: Validate action parameter
+        run: |
+          curl -L \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            https://models.github.ai/catalog/models | jq -e --arg id "${{ github.event.inputs.llm }}" '($id | sub("^[^:]*:"; "")) as $norm_id | map(.id == $norm_id) | any'
+
       - name: Clone repo
         uses: actions/checkout@v4
         with:
