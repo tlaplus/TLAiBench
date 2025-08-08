@@ -1,0 +1,16 @@
+name: List Github models
+on:
+  workflow_dispatch:
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    permissions:
+      models: read
+    steps:
+      - name: Call GitHub Models catalog
+        run: |
+          curl -L \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            https://models.github.ai/catalog/models | jq .
