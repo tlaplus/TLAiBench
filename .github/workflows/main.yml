@@ -1,6 +1,12 @@
 name: TLAiBench
 
-on: [push, workflow_dispatch]
+on:
+  workflow_dispatch:
+    inputs:
+      llm:
+        description: 'Github LLM'
+        required: false
+        default: 'github:openai/gpt-4.1'
 
 ## https://microsoft.github.io/genaiscript/reference/github-actions/
 ## https://docs.github.com/en/github-models/use-github-models/integrating-ai-models-into-your-development-workflow#using-ai-models-with-github-actions
@@ -88,7 +94,7 @@ jobs:
 
       - name: Run GenAIscript on the logic puzzles.
         ## Install genaiscript runtime: https://microsoft.github.io/genaiscript/reference/cli/
-        run: npx --yes genaiscript run --provider github genaisrc/translate.genai.mts
+        run: npx --yes genaiscript run --provider github --model ${{ github.event.inputs.llm }} genaisrc/translate.genai.mts
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
