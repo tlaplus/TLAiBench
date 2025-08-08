@@ -29,7 +29,7 @@ async function runTLCAndValidate(
     validateExitCode: (exitCode: number) => boolean,
     extraArgs: string[] = []
 ) {
-    const args = [`-jar`, `tla2tools.jar`, tlaFile, `-config`, cfgFile, `-note`, `-cleanup`, ...extraArgs];
+    const args = ['-XX:+UseParallelGC', `-jar`, `tla2tools.jar`, tlaFile, `-config`, cfgFile, `-note`, `-cleanup`, ...extraArgs];
     const result = await host.exec(`java`, args);
     
     if (!validateExitCode(result.exitCode)) {
@@ -44,7 +44,7 @@ async function runTLCAndValidate(
 const { dbg } = env
 
 // Assert that TLC can be run locally
-const shellOutput = await host.exec(`java`, ['-jar', 'tla2tools.jar']);
+const shellOutput = await host.exec(`java`, ['-XX:+UseParallelGC', '-jar', 'tla2tools.jar']);
 if (shellOutput.exitCode !== 1) {
     console.error(`TLC exited with code ${shellOutput.exitCode}. Output: ${shellOutput.stdout}`);
     cancel(`TLC installation missing. TLC did not exit with expected exit code. Check the output for details.`);
