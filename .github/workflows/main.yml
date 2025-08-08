@@ -111,6 +111,8 @@ jobs:
       ## Postprocess the TLAi benchmarks
       ##
 
+      - run: ls -lah && ls -lah .genaiscript
+
       - name: Archive generated TLA+ specs (if any)
         uses: actions/upload-artifact@v4
         with:
