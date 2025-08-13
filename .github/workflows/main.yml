@@ -110,6 +110,9 @@ jobs:
       ## Postprocess the TLAi benchmarks
       ##
 
+      - run: cat .genaiscript/runs/translate/*/trace.md
+        if: always()
+
       - name: Archive generated TLA+ specs (if any)
         if: always()
         uses: actions/upload-artifact@v4
