@@ -103,7 +103,7 @@ jobs:
 
       - name: Run GenAIscript on the logic puzzles.
         ## Install genaiscript runtime: https://microsoft.github.io/genaiscript/reference/cli/
-        run: DEBUG=* npx --yes genaiscript@latest run --provider ${{ github.event.inputs.provider }} --model ${{ github.event.inputs.creator }}/${{ github.event.inputs.llm }} genaisrc/translate.genai.mts
+        run: DEBUG=* npx --yes genaiscript@latest run --provider ${{ github.event.inputs.provider }} --model ${{ github.event.inputs.provider }}:${{ github.event.inputs.creator }}/${{ github.event.inputs.llm }} genaisrc/translate.genai.mts
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
