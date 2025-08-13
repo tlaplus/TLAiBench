@@ -112,8 +112,10 @@ jobs:
       ##
 
       - run: ls -lah && ls -lah .genaiscript
+        if: always()
 
       - name: Archive generated TLA+ specs (if any)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: TLAiBenchResults-${${{ github.event.inputs.llm }}//[:\/]/_}
