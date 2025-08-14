@@ -142,9 +142,7 @@ Refinement ==
 
 Stats ==
     \* Known state space of this puzzle.
-    /\ TLCGet("stats").generated = 97
-    /\ TLCGet("stats").distinct = 16
-    /\ TLCGet("stats").diameter = 8
+    /\ TLCGet("stats").diameter = 7
     /\ TLCGet("stats").initial = 1
     /\ TLCGet("stats").queue = 0
 
