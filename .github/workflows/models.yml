@@ -14,3 +14,30 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H 'X-GitHub-Api-Version: 2022-11-28' \
             https://models.github.ai/catalog/models | jq .
+
+      - name: Clone repo
+        uses: actions/checkout@v4
+        with:
+            ## All history for git diff below to succeed.
+            fetch-depth: 0
+
+      - name: Run Hello World to check authentication and authorization.
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DEBUG=* npx --yes genaiscript@latest run genaisrc/HelloWorld.genai.mts
+
+      ## Postprocess the TLAi benchmarks
+      ##
+
+      - run: cat .genaiscript/runs/HelloWorld/*/trace.md
+        if: always()
+
+      - name: Archive generated TLA+ specs (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          include-hidden-files: true
+          name: ListModels
+          path: |
+            .genaiscript/*
