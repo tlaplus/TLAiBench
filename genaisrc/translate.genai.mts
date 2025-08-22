@@ -73,7 +73,7 @@ for (const file of env.files) {
             setupTLATools(ctx);
             ctx.$`Create a TLA+ specification in a new file ${tlaFile} that formalizes the problem described in ${file.filename}, including all relevant requirements and constraints. Use the **fs_write_file tool** to write the specification. Then, parse the specification using SANY via the **tla_tlaplus_mcp_sany_parse** tool. If parsing fails, revise the specification until it parses successfully. Next, generate a TLC configuration file ${cfgFile}. Use the **tla_tlaplus_mcp_sany_symbol** tool to identify the relevant symbols needed in the config file. Finally, verify the specification using the TLC model checker via the **tla_tlaplus_mcp_tlc_check** tool and determine whether the expected counterexample is found. Do not ignore tool warnings or errors that may arise during this process; correct them based on the feedback provided by the tools.`
         },
-        { model: "large", system: ["system.fs_read_file", "system.fs_write_file", "system.do_not_explain"] });
+        { model: "large", system: ["system.fs_read_file", "system.fs_write_file", "system.do_not_explain", "system.resources"] });
     dbg(synthesize);
     if (!synthesize || synthesize.error || synthesize.finishReason === "fail") {
         cancel(`Failed to synthesize TLA+ specification: ${synthesize.error?.message ?? "No error message"} (finishReason: ${synthesize.finishReason ?? "unknown"})`);
@@ -106,7 +106,7 @@ for (const file of env.files) {
             setupTLATools(ctx);
             ctx.$`Use the TLC model checker via the **tla_tlaplus_mcp_tlc_check** tool with the **-dumptrace tlcTESpec ${traceFile}** option to serialize a counterexample trace to a file named ${traceFile} for the TLA+ specification ${tlaFile}. Next, create a refinement mapping from ${traceFile} to the gold-standard specification ${goldFile} in a new spec ${traceRefFile} that extends ${traceFile} and refines ${goldFile}. You must not modify ${traceFile} or ${goldFile} specification directly.  Parse the refinement using the **tla_tlaplus_mcp_sany_parse** tool. If parsing fails, revise the refinement until it is valid. Once the refinement is correctly parsed, use the **tla_tlaplus_mcp_tlc_check** tool to verify whether the refinement holds. Use the **tla_tlaplus_mcp_sany_symbol** tool to identify the relevant symbols needed in the ${traceCfgFile} config file.`
         },
-        { model: "large", system: ["system.fs_read_file", "system.fs_write_file", "system.do_not_explain"] });
+        { model: "large", system: ["system.fs_read_file", "system.fs_write_file", "system.do_not_explain", "system.resources"] });
     dbg(traceRefinement);
     if (!synthesize || synthesize.error || synthesize.finishReason === "fail") {
         cancel(`Failed to synthesize TLA+ specification: ${synthesize.error?.message ?? "No error message"} (finishReason: ${synthesize.finishReason ?? "unknown"})`);
@@ -136,7 +136,7 @@ for (const file of env.files) {
             setupTLATools(ctx);
             ctx.$`Define a refinement mapping from the specification ${tlaFile} to the specification ${fileName}Gold.tla. You must not modify either specification directly. Instead, create a new TLA+ module ${refTLAFile} that extends ${tlaFile} and instantiates ${goldFile}. Parse the refinement module using the **tla_tlaplus_mcp_sany_parse** tool. If parsing fails, revise the module until it is valid. Finally, use the **tla_tlaplus_mcp_tlc_check** tool to check whether the refinement mapping holds.  Use the **tla_tlaplus_mcp_sany_symbol** tool to identify the relevant symbols needed in the ${refCFGFile} config file.`
         },
-        { model: "large", system: ["system.fs_read_file", "system.fs_write_file", "system.do_not_explain"] });
+        { model: "large", system: ["system.fs_read_file", "system.fs_write_file", "system.do_not_explain", "system.resources"] });
     dbg(fullRefinement);
     if (!synthesize || synthesize.error || synthesize.finishReason === "fail") {
         cancel(`Failed to synthesize TLA+ specification: ${synthesize.error?.message ?? "No error message"} (finishReason: ${synthesize.finishReason ?? "unknown"})`);
