@@ -75,6 +75,9 @@ for (const file of env.files) {
         },
         { model: "large", system: ["system.fs_read_file", "system.fs_write_file", "system.do_not_explain"] });
     dbg(synthesize);
+    if (!synthesize || synthesize.error || synthesize.finishReason === "fail") {
+        cancel(`Failed to synthesize TLA+ specification: ${synthesize.error?.message ?? "No error message"} (finishReason: ${synthesize.finishReason ?? "unknown"})`);
+    }
     console.log(`Created TLA+ specification: ${synthesize}`);
 
     // ------------------------------------------------------------------------------ //
@@ -105,6 +108,9 @@ for (const file of env.files) {
         },
         { model: "large", system: ["system.fs_read_file", "system.fs_write_file", "system.do_not_explain"] });
     dbg(traceRefinement);
+    if (!synthesize || synthesize.error || synthesize.finishReason === "fail") {
+        cancel(`Failed to synthesize TLA+ specification: ${synthesize.error?.message ?? "No error message"} (finishReason: ${synthesize.finishReason ?? "unknown"})`);
+    }
     console.log(`Created TLA+ trace refinement: ${traceRefinement}`);
 
     // ------------------------------------------------------------------------------ //
@@ -132,6 +138,9 @@ for (const file of env.files) {
         },
         { model: "large", system: ["system.fs_read_file", "system.fs_write_file", "system.do_not_explain"] });
     dbg(fullRefinement);
+    if (!synthesize || synthesize.error || synthesize.finishReason === "fail") {
+        cancel(`Failed to synthesize TLA+ specification: ${synthesize.error?.message ?? "No error message"} (finishReason: ${synthesize.finishReason ?? "unknown"})`);
+    }
     console.log(`Created TLA+ full refinement: ${fullRefinement}`);
 
     // ------------------------------------------------------------------------------ //
