@@ -1,3 +1,5 @@
 .genaiscript/
 .vscode/
 states/
+CommunityModules-deps.jar
+tla2tools.jar
