@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       models: read
+      id-token: write   # required for OIDC
+      contents: read
     steps:
       - name: Call GitHub Models catalog
         run: |
@@ -34,12 +36,17 @@ jobs:
             ## All history for git diff below to succeed.
             fetch-depth: 0
 
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::024871859028:role/GitHubActionsRole
+          aws-region: us-east-1
+
       - name: Run Hello World to check authentication and authorization.
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-            AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
         run: |
-          DEBUG=* npx --yes genaiscript@latest run --provider ${{ github.event.inputs.provider }} --model ${{ github.event.inputs.provider }}:${{ github.event.inputs.creator }}/${{ github.event.inputs.llm }} genaisrc/HelloWorld.genai.mts
+          DEBUG=* npx --yes genaiscript@latest run --provider ${{ github.event.inputs.provider }} --model ${{ github.event.inputs.creator }}:${{ github.event.inputs.llm }} genaisrc/HelloWorld.genai.mts
 
       ## Postprocess the TLAi benchmarks
       ##
