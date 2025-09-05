@@ -1,6 +1,19 @@
 name: List Github models
 on:
   workflow_dispatch:
+    inputs:
+      llm:
+        description: 'LLM name'
+        required: false
+        default: 'gpt-4.1'
+      creator:
+        description: 'LLM Creator'
+        required: false
+        default: 'openai'
+      provider:
+        description: 'LLM Provider'
+        required: false
+        default: 'github'
 jobs:
   list:
     runs-on: ubuntu-latest
@@ -24,8 +37,9 @@ jobs:
       - name: Run Hello World to check authentication and authorization.
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
         run: |
-          DEBUG=* npx --yes genaiscript@latest run genaisrc/HelloWorld.genai.mts
+          DEBUG=* npx --yes genaiscript@latest run --provider ${{ github.event.inputs.provider }} --model ${{ github.event.inputs.provider }}:${{ github.event.inputs.creator }}/${{ github.event.inputs.llm }} genaisrc/HelloWorld.genai.mts
 
       ## Postprocess the TLAi benchmarks
       ##
