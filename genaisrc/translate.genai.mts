@@ -7,7 +7,7 @@ script({
     // https://microsoft.github.io/genaiscript/reference/scripts/inline-prompts/#inline-only-scripts
     model: "none",
     // https://microsoft.github.io/genaiscript/reference/scripts/inline-prompts/#concurrency
-    modelConcurrency: { "github_copilot_chat:current": 1 }
+    modelConcurrency: { "large": 1 }
 })
 
 // https://microsoft.github.io/genaiscript/reference/scripts/tools/#reusing-tools-in-system-scripts
