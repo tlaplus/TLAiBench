@@ -97,6 +97,7 @@ jobs:
         run: npx genaiscript scripts model genaisrc/translate.genai.mts
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
       ## Run TLAi benchmarks
       ##
@@ -106,6 +107,7 @@ jobs:
         run: DEBUG=* npx --yes genaiscript@latest run --provider ${{ github.event.inputs.provider }} --model ${{ github.event.inputs.provider }}:${{ github.event.inputs.creator }}/${{ github.event.inputs.llm }} genaisrc/translate.genai.mts
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
 
       ## Postprocess the TLAi benchmarks
       ##
