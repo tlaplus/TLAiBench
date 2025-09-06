@@ -3,17 +3,13 @@ on:
   workflow_dispatch:
     inputs:
       llm:
-        description: 'LLM name'
+        description: 'LLM connection'
         required: false
-        default: 'gpt-4.1'
-      creator:
-        description: 'LLM Creator'
-        required: false
-        default: 'openai'
-      provider:
-        description: 'LLM Provider'
-        required: false
-        default: 'github'
+        type: choice
+        options:
+          - '{"model": "github:openai/gpt-4.1", "provider": "github"}'
+          - '{"model": "anthropic_bedrock:arn:aws:bedrock:us-east-1:024871859028:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0", "provider": "anthropic_bedrock"}'
+
 jobs:
   list:
     runs-on: ubuntu-latest
@@ -46,7 +42,7 @@ jobs:
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          DEBUG=* npx --yes genaiscript@latest run --provider ${{ github.event.inputs.provider }} --model ${{ github.event.inputs.creator }}:${{ github.event.inputs.llm }} genaisrc/HelloWorld.genai.mts
+          DEBUG=* npx --yes genaiscript@latest run --provider $(echo '${{ github.event.inputs.llm }}' | jq -r .provider) --model $(echo '${{ github.event.inputs.llm }}' | jq -r .model) genaisrc/HelloWorld.genai.mts
 
       ## Postprocess the TLAi benchmarks
       ##
