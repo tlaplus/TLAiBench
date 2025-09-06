@@ -4,17 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       llm:
-        description: 'LLM name'
+        description: 'LLM connection'
         required: false
-        default: 'gpt-4.1'
-      creator:
-        description: 'LLM Creator'
-        required: false
-        default: 'openai'
-      provider:
-        description: 'LLM Provider'
-        required: false
-        default: 'github'
+        type: choice
+        options:
+          - '{"model": "github:openai/gpt-4.1", "provider": "github", "name": "gpt-4.1"}'
+          - '{"model": "anthropic_bedrock:arn:aws:bedrock:us-east-1:024871859028:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0", "provider": "anthropic_bedrock", "name": "claude-sonnet-4"}'
 
 ## https://microsoft.github.io/genaiscript/reference/github-actions/
 ## https://docs.github.com/en/github-models/use-github-models/integrating-ai-models-into-your-development-workflow#using-ai-models-with-github-actions
@@ -111,7 +106,7 @@ jobs:
 
       - name: Run GenAIscript on the logic puzzles.
         ## Install genaiscript runtime: https://microsoft.github.io/genaiscript/reference/cli/
-        run: DEBUG=* npx --yes genaiscript@latest run --provider ${{ github.event.inputs.provider }} --model ${{ github.event.inputs.creator }}:${{ github.event.inputs.llm }} genaisrc/translate.genai.mts
+        run: DEBUG=* npx --yes genaiscript@latest run --provider $(echo '${{ github.event.inputs.llm }}' | jq -r .provider) --model $(echo '${{ github.event.inputs.llm }}' | jq -r .model) genaisrc/translate.genai.mts
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -125,7 +120,7 @@ jobs:
         id: normalize
         run: |
           # Replace problematic characters with underscores
-          normalized_llm=$(echo "${{ github.event.inputs.llm }}" | sed 's/[^a-zA-Z0-9._-]/_/g')
+          normalized_llm=$(echo '${{ github.event.inputs.llm }}' | jq -r .name)
           echo "llm_name=${normalized_llm}" >> $GITHUB_OUTPUT
 
       - name: Archive generated TLA+ specs (if any)
@@ -133,7 +128,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           include-hidden-files: true
-          name: TLAiBenchResults-${{ github.event.inputs.provider }}_${{ github.event.inputs.creator }}_${{ steps.normalize.outputs.llm_name }}
+          name: TLAiBenchResults-${{ steps.normalize.outputs.llm_name }}
           path: |
             .genaiscript/*
             *.tla
