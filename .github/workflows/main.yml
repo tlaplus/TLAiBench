@@ -5,7 +5,7 @@ on:
     inputs:
       llm:
         description: 'LLM connection'
-        required: false
+        required: true
         type: choice
         options:
           - '{"model": "github:openai/gpt-4.1", "provider": "github", "name": "gpt-4.1"}'
@@ -119,8 +119,26 @@ jobs:
       - name: Normalize LLM name for artifact
         id: normalize
         run: |
-          # Replace problematic characters with underscores
-          normalized_llm=$(echo '${{ github.event.inputs.llm }}' | jq -r .name)
+          # Debug: Show the raw input
+          echo "Raw LLM input: '${{ github.event.inputs.llm }}'"
+          
+          # Check if input is empty first
+          if [ -z '${{ github.event.inputs.llm }}' ]; then
+            echo "ERROR: LLM input is completely empty!"
+            normalized_llm="no-input-$(date +%Y%m%d-%H%M%S)"
+          else
+            # Try to parse the JSON
+            normalized_llm=$(echo '${{ github.event.inputs.llm }}' | jq -r .name 2>/dev/null || echo "")
+            echo "Extracted LLM name: '${normalized_llm}'"
+            
+            # Fallback if name is empty or null
+            if [ -z "$normalized_llm" ] || [ "$normalized_llm" = "null" ]; then
+              normalized_llm="unknown-$(date +%Y%m%d-%H%M%S)"
+              echo "Using fallback name: '${normalized_llm}'"
+            fi
+          fi
+          
+          echo "Final LLM name: '${normalized_llm}'"
           echo "llm_name=${normalized_llm}" >> $GITHUB_OUTPUT
 
       - name: Archive generated TLA+ specs (if any)
@@ -130,7 +148,7 @@ jobs:
           include-hidden-files: true
           name: TLAiBenchResults-${{ steps.normalize.outputs.llm_name }}
           path: |
-            .genaiscript/*
+            .genaiscript/
             *.tla
             *.cfg
             !gold/*.tla
