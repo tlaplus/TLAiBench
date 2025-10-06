@@ -85,6 +85,7 @@ class TLATranslator:
         self.mcp_url = mcp_url
         self.mcp_server_manager = None
         self.available_tools = []
+        self.available_resources = []
         self.workspace_root = Path.cwd()
         
     async def setup_mcp_connection(self, max_retries: int = 3, timeout: float = 30.0):
@@ -122,6 +123,21 @@ class TLATranslator:
                     if test_result.get("isError"):
                         raise RuntimeError(f"MCP test call failed: {test_result.get('error')}")
                     
+                    # Discover available resources
+                    try:
+                        self.available_resources = await asyncio.wait_for(
+                            self.list_mcp_resources(),
+                            timeout=timeout
+                        )
+                        logger.info(f"📚 Discovered {len(self.available_resources)} MCP resources")
+                        for resource in self.available_resources[:3]:  # Show first 3 resources
+                            logger.debug(f"  - {resource.get('name', resource.get('uri', 'Unknown'))}: {resource.get('description', 'No description')}")
+                        if len(self.available_resources) > 3:
+                            logger.debug(f"  ... and {len(self.available_resources) - 3} more resources")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to discover MCP resources: {e}")
+                        self.available_resources = []
+                    
                     logger.info("✅ MCP connection established and tested successfully!")
                     return
                     
@@ -151,6 +167,150 @@ class TLATranslator:
                     wait_time = 2 ** attempt
                     logger.info(f"⏳ Waiting {wait_time}s before retry...")
                     await asyncio.sleep(wait_time)
+                    
+    async def list_mcp_resources(self, max_retries: int = 3, timeout: float = 30.0) -> List[Dict[str, Any]]:
+        """List all resources available across all MCP servers."""
+        if not self.mcp_server_manager:
+            logger.warning("⚠️ MCP server manager not initialized")
+            return []
+            
+        resources = []
+        
+        try:
+            # Get the registry of servers
+            registry = self.mcp_server_manager.get_registry()
+            
+            for server_id, server in registry.items():
+                logger.debug(f"🔍 Listing resources from server: {server.server_name}")
+                
+                try:
+                    # Create MCP client for this server
+                    client = self.mcp_server_manager._create_mcp_client(server)
+                    
+                    try:
+                        # Connect to the server
+                        await asyncio.wait_for(client.connect(), timeout=timeout)
+                        
+                        # Try to list resources using the MCP protocol
+                        # This uses the resources/list method from the MCP specification
+                        # The LiteLLM MCPClient doesn't expose list_resources directly,
+                        # but the underlying session does
+                        try:
+                            if hasattr(client, '_session') and hasattr(client._session, 'list_resources'):
+                                resources_result = await asyncio.wait_for(
+                                    client._session.list_resources(),
+                                    timeout=timeout
+                                )
+                            else:
+                                logger.debug(f"⚠️ Client for {server.server_name} doesn't have session.list_resources")
+                                continue
+                            
+                            if hasattr(resources_result, 'resources'):
+                                server_resources = resources_result.resources
+                            else:
+                                server_resources = resources_result
+                                
+                            # Add server context to each resource
+                            for resource in server_resources:
+                                resource_info = {
+                                    'server_name': server.server_name,
+                                    'server_id': server_id,
+                                    'uri': getattr(resource, 'uri', ''),
+                                    'name': getattr(resource, 'name', ''),
+                                    'description': getattr(resource, 'description', ''),
+                                    'mimeType': getattr(resource, 'mimeType', ''),
+                                }
+                                resources.append(resource_info)
+                                
+                            logger.info(f"✅ Found {len(server_resources)} resources from {server.server_name}")
+                            
+                        except AttributeError:
+                            # Server might not support list_resources method
+                            logger.debug(f"⚠️ Server {server.server_name} does not support list_resources")
+                        except Exception as e:
+                            logger.debug(f"⚠️ Failed to list resources from {server.server_name}: {e}")
+                            
+                    finally:
+                        try:
+                            await client.disconnect()
+                        except:
+                            pass
+                            
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to connect to server {server.server_name}: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.error(f"❌ Failed to list MCP resources: {e}")
+            
+        logger.info(f"📚 Discovered {len(resources)} total resources from all servers")
+        return resources
+        
+    async def read_mcp_resource(self, resource_uri: str, server_name: str = None) -> Dict[str, Any]:
+        """Read content from an MCP resource."""
+        if not self.mcp_server_manager:
+            logger.warning("⚠️ MCP server manager not initialized")
+            return {"error": "MCP server manager not initialized", "isError": True}
+            
+        try:
+            # Get the registry of servers
+            registry = self.mcp_server_manager.get_registry()
+            
+            # Find the server that has this resource
+            target_server = None
+            if server_name:
+                for server_id, server in registry.items():
+                    if server.server_name == server_name:
+                        target_server = server
+                        break
+            else:
+                # If no server specified, try the first server
+                if registry:
+                    target_server = next(iter(registry.values()))
+            
+            if not target_server:
+                return {"error": f"Server {server_name} not found", "isError": True}
+                
+            try:
+                # Create MCP client for this server
+                client = self.mcp_server_manager._create_mcp_client(target_server)
+                
+                try:
+                    # Connect to the server
+                    await client.connect()
+                    
+                    # Read the resource using the underlying session
+                    if hasattr(client, '_session') and hasattr(client._session, 'read_resource'):
+                        resource_result = await client._session.read_resource(resource_uri)
+                    else:
+                        return {"error": f"Client doesn't support read_resource", "isError": True}
+                    
+                    # Extract content from the result
+                    if hasattr(resource_result, 'contents'):
+                        contents = resource_result.contents
+                        if contents and len(contents) > 0:
+                            content = contents[0]
+                            return {
+                                "content": getattr(content, 'text', str(content)),
+                                "mimeType": getattr(content, 'mimeType', 'text/plain'),
+                                "isError": False
+                            }
+                    
+                    return {"content": str(resource_result), "isError": False}
+                    
+                finally:
+                    try:
+                        await client.disconnect()
+                    except:
+                        pass
+                        
+            except Exception as e:
+                logger.error(f"❌ Failed to read resource {resource_uri}: {e}")
+                return {"error": str(e), "isError": True}
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to read MCP resource: {e}")
+            return {"error": str(e), "isError": True}
             
     async def gpt_call(self, messages: List[Dict[str, str]]) -> str:
         """Make a call to the LLM."""
@@ -248,7 +408,7 @@ class TLATranslator:
             raise
             
     async def create_tools_description(self) -> str:
-        """Create a comprehensive description of available MCP tools for the LLM."""
+        """Create a comprehensive description of available MCP tools and resources for the LLM."""
         tool_descriptions = []
         
         for tool in self.available_tools:
@@ -308,7 +468,39 @@ class TLATranslator:
             else:
                 tool_descriptions.append(f"{tool_example}\n  No parameters required.")
         
-        return "\n\n".join(tool_descriptions)
+        # Add resources section
+        resources_section = ""
+        if self.available_resources:
+            resource_descriptions = []
+            resource_descriptions.append("## Available MCP Resources")
+            resource_descriptions.append("")
+            resource_descriptions.append("The following resources are available for reading contextual information:")
+            resource_descriptions.append("")
+            
+            for resource in self.available_resources:
+                resource_name = resource.get('name', resource.get('uri', 'Unknown'))
+                resource_desc = resource.get('description', 'No description available')
+                resource_uri = resource.get('uri', '')
+                resource_mime = resource.get('mimeType', 'unknown')
+                server_name = resource.get('server_name', 'unknown')
+                
+                resource_info = f"- **{resource_name}** (from {server_name})"
+                if resource_uri:
+                    resource_info += f"\n  URI: {resource_uri}"
+                if resource_mime and resource_mime != 'unknown':
+                    resource_info += f"\n  Type: {resource_mime}"
+                resource_info += f"\n  Description: {resource_desc}"
+                
+                resource_descriptions.append(resource_info)
+            
+            resources_section = "\n".join(resource_descriptions)
+        
+        # Combine tools and resources
+        full_description = "\n\n".join(tool_descriptions)
+        if resources_section:
+            full_description += "\n\n" + resources_section
+            
+        return full_description
         
     async def run_agent_prompt(self, user_prompt: str, max_turns: int = 15) -> str:
         """Run an agent-based prompt with MCP tool access using ReAct pattern."""
@@ -326,6 +518,9 @@ CRITICAL: You MUST respond with ONLY valid JSON. No explanations, no markdown, n
 
 To call a tool:
 {{"action": "call_tool", "tool": "<tool_name>", "params": {{"param1": "value1", "param2": "value2"}}}}
+
+To read a resource:
+{{"action": "read_resource", "uri": "<resource_uri>", "server": "<server_name>"}}
 
 To provide final answer:
 {{"action": "final_answer", "answer": "Your final response here"}}
@@ -403,6 +598,32 @@ To provide final answer:
                         "content": f"Observation: {json.dumps(tool_response)}"
                     })
                     
+            elif action.get("action") == "read_resource":
+                resource_uri = action.get("uri", "")
+                server_name = action.get("server", "")
+                
+                logger.info(f"📚 Reading MCP resource: {resource_uri} from {server_name}")
+                resource_response = await self.read_mcp_resource(resource_uri, server_name)
+                
+                messages.append({"role": "assistant", "content": content})
+                
+                # Handle resource read errors more gracefully
+                if resource_response.get("isError"):
+                    logger.warning(f"⚠️ Resource read failed: {resource_response}")
+                    error_msg = resource_response.get("error", "Unknown error")
+                    messages.append({
+                        "role": "system",
+                        "content": f"Resource Error: Failed to read {resource_uri}: {error_msg}. Please try a different resource or approach."
+                    })
+                else:
+                    logger.info(f"✅ Resource {resource_uri} read successfully")
+                    resource_content = resource_response.get("content", "")
+                    mime_type = resource_response.get("mimeType", "text/plain")
+                    messages.append({
+                        "role": "system",
+                        "content": f"Resource Content ({mime_type}): {resource_content}"
+                    })
+                    
             elif action.get("action") == "final_answer":
                 final_result = action["answer"]
                 logger.info(f"✅ Agent completed with final answer: {final_result}")
@@ -412,7 +633,7 @@ To provide final answer:
                 messages.append({"role": "assistant", "content": content})
                 messages.append({
                     "role": "system",
-                    "content": "Unknown action. Please use either 'call_tool' or 'final_answer'."
+                    "content": "Unknown action. Please use 'call_tool', 'read_resource', or 'final_answer'."
                 })
                 
         return final_result or "Agent completed without explicit final answer"
@@ -725,6 +946,18 @@ async def test_mcp_connection(mcp_url: str = "http://localhost:59071/mcp"):
                 name="tlaplus_mcp_sany_modules", arguments={}
             )
             logger.info(f"🎯 Test tool call successful: {type(tool_response)}")
+            
+            # Test resource listing
+            try:
+                translator = TLATranslator(mcp_url=mcp_url)
+                translator.mcp_server_manager = mcp_server_manager
+                resources = await translator.list_mcp_resources()
+                logger.info(f"📚 Test resource listing successful: found {len(resources)} resources")
+                for resource in resources[:3]:  # Show first 3
+                    logger.info(f"  - {resource.get('name', resource.get('uri', 'Unknown'))}")
+            except Exception as e:
+                logger.warning(f"⚠️ Test resource listing failed: {e}")
+            
             return True
         except Exception as e:
             logger.warning(f"⚠️ Test tool call failed: {e}")
