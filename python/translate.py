@@ -19,14 +19,27 @@ USAGE:
     
     # Use different model
     python translate.py --model azure/gpt-4o DieHard.md
+    
+    # Use AWS Bedrock
+    python translate.py --model bedrock/anthropic.claude-sonnet-4-20250514-v1:0 --model-id arn:aws:bedrock:us-east-1:024871859028:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0 DieHard.md
 
 REQUIREMENTS:
     - TLA+ MCP server running on http://localhost:59071/mcp
     - Java with tla2tools.jar available in current directory
-    - Azure OpenAI API credentials set in environment variables:
+    - API credentials for either Azure OpenAI or AWS Bedrock:
+      
+      Azure OpenAI:
       - AZURE_API_KEY
       - AZURE_API_BASE
       - AZURE_API_VERSION
+      
+      AWS Bedrock (option 1 - bearer token):
+      - AWS_BEARER_TOKEN_BEDROCK
+      
+      AWS Bedrock (option 2 - standard AWS credentials):
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_REGION (optional)
 
 PIPELINE:
     1. Synthesize TLA+ specification from natural language puzzle description
@@ -80,8 +93,9 @@ logger = logging.getLogger(__name__)
 class TLATranslator:
     """Main class for translating natural language to TLA+ specifications."""
     
-    def __init__(self, model: str = "azure/gpt-4.1", mcp_url: str = "http://localhost:59071/mcp"):
+    def __init__(self, model: str = "azure/gpt-4.1", model_id: Optional[str] = None, mcp_url: str = "http://localhost:59071/mcp"):
         self.model = model
+        self.model_id = model_id
         self.mcp_url = mcp_url
         self.mcp_server_manager = None
         self.available_tools = []
@@ -315,11 +329,18 @@ class TLATranslator:
     async def gpt_call(self, messages: List[Dict[str, str]]) -> str:
         """Make a call to the LLM."""
         try:
-            response = await acompletion(
-                model=self.model,
-                messages=messages,
-                stream=False,
-            )
+            # Prepare completion parameters
+            completion_params = {
+                "model": self.model,
+                "messages": messages,
+                "stream": False,
+            }
+            
+            # Add model_id if specified (required for AWS Bedrock)
+            if self.model_id:
+                completion_params["model_id"] = self.model_id
+            
+            response = await acompletion(**completion_params)
             return response["choices"][0]["message"]["content"]
         except Exception as e:
             logger.error(f"❌ LLM call failed: {e}")
@@ -906,15 +927,27 @@ Consult the TLA+ knowledge base when refining the specification."""
 
 
 def setup_environment():
-    """Setup environment variables for Azure OpenAI."""
-    # These should ideally be set via environment variables or config file
-    # The values here are from the example file - replace with your own
-    if not os.environ.get("AZURE_API_KEY"):
-        logger.error("⚠️ AZURE_API_KEY not set in environment, using default from example")
-        raise RuntimeError("AZURE_API_KEY not set in environment")
+    """Setup environment variables for Azure OpenAI and AWS Bedrock."""
+    # Check for Azure OpenAI credentials
+    if os.environ.get("AZURE_API_KEY"):
+        logger.info(f"🔑 Using Azure API Base: {os.environ.get('AZURE_API_BASE')}")
+        logger.info(f"🔑 Using Azure API Version: {os.environ.get('AZURE_API_VERSION')}")
     
-    logger.info(f"🔑 Using Azure API Base: {os.environ.get('AZURE_API_BASE')}")
-    logger.info(f"🔑 Using Azure API Version: {os.environ.get('AZURE_API_VERSION')}")
+    # Check for AWS Bedrock credentials
+    elif os.environ.get("AWS_BEARER_TOKEN_BEDROCK"):
+        logger.info("🔑 Using AWS Bedrock authentication")
+    
+    # Check for standard AWS credentials
+    elif os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY"):
+        logger.info("🔑 Using AWS credentials for Bedrock")
+        if os.environ.get("AWS_REGION"):
+            logger.info(f"🔑 AWS Region: {os.environ.get('AWS_REGION')}")
+    
+    else:
+        logger.warning("⚠️ No API credentials found. Please set either:")
+        logger.warning("   - AZURE_API_KEY for Azure OpenAI")
+        logger.warning("   - AWS_BEARER_TOKEN_BEDROCK for AWS Bedrock with bearer token")
+        logger.warning("   - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY for AWS Bedrock")
 
 
 async def test_mcp_connection(mcp_url: str = "http://localhost:59071/mcp"):
@@ -980,7 +1013,11 @@ async def main():
     parser.add_argument(
         "--model", 
         default="azure/gpt-4.1",
-        help="LLM model to use (default: azure/gpt-4.1)"
+        help="LLM model to use (default: azure/gpt-4.1). For Bedrock use format: bedrock/anthropic.claude-sonnet-4-20250514-v1:0"
+    )
+    parser.add_argument(
+        "--model-id", 
+        help="Model ID for AWS Bedrock (e.g., arn:aws:bedrock:us-east-1:024871859028:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0)"
     )
     parser.add_argument(
         "--mcp-url", 
@@ -1010,7 +1047,7 @@ async def main():
         success = await test_mcp_connection(args.mcp_url)
         sys.exit(0 if success else 1)
     
-    translator = TLATranslator(model=args.model, mcp_url=args.mcp_url)
+    translator = TLATranslator(model=args.model, model_id=getattr(args, 'model_id', None), mcp_url=args.mcp_url)
     
     try:
         await translator.run(args.puzzle_files)
