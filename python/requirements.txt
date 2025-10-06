@@ -1,0 +1,44 @@
+# Requirements for translate.py - NL2TLA+ Translation Script
+#
+# This file contains the Python dependencies needed to run the translate.py script
+# which translates natural language descriptions into TLA+ specifications using
+# LiteLLM and MCP (Model Context Protocol) tools.
+#
+# Installation:
+#   pip install -r requirements.txt
+#
+# Main dependencies for translate.py functionality
+
+# LiteLLM for LLM API calls (Azure OpenAI, etc.) with proxy support for MCP
+litellm[proxy]>=1.77.4
+
+# MCP (Model Context Protocol) for TLA+ tool integration
+mcp>=1.12.4
+
+# Core Python libraries (usually included with Python, but listed for completeness)
+# asyncio - built-in
+# json - built-in  
+# os - built-in
+# sys - built-in
+# subprocess - built-in
+# shutil - built-in
+# argparse - built-in
+# pathlib - built-in
+# typing - built-in
+# logging - built-in
+
+# Additional dependencies that may be required by litellm and mcp
+aiohttp>=3.12.0
+httpx>=0.28.0
+pydantic>=2.11.0
+python-dotenv>=1.1.0
+PyYAML>=6.0.0
+
+# Optional but recommended for better performance and functionality
+uvloop>=0.21.0; sys_platform != "win32"
+
+# Development and debugging tools (optional)
+# Uncomment if you need these for development
+# black>=25.9.0
+# flake8>=7.3.0
+# debugpy>=1.8.0
