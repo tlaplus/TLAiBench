@@ -1,4 +1,5 @@
 .genaiscript/
+__pycache__/
 .vscode/
 states/
 CommunityModules-deps.jar
