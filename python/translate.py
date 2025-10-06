@@ -329,10 +329,25 @@ class TLATranslator:
     async def gpt_call(self, messages: List[Dict[str, str]]) -> str:
         """Make a call to the LLM."""
         try:
+            # Validate messages to prevent empty content that causes Bedrock API errors
+            validated_messages = []
+            for msg in messages:
+                content = msg.get("content", "").strip()
+                if not content:
+                    logger.warning(f"⚠️ Skipping empty message with role: {msg.get('role', 'unknown')}")
+                    continue
+                validated_messages.append({
+                    "role": msg["role"],
+                    "content": content
+                })
+            
+            if not validated_messages:
+                raise ValueError("No valid messages to send to LLM")
+            
             # Prepare completion parameters
             completion_params = {
                 "model": self.model,
-                "messages": messages,
+                "messages": validated_messages,
                 "stream": False,
             }
             
