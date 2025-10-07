@@ -329,24 +329,57 @@ class TLATranslator:
             logger.error(f"❌ Failed to read MCP resource: {e}")
             return {"error": str(e), "isError": True}
             
-    async def gpt_call(self, messages: List[Dict[str, str]]) -> str:
-        """Make a call to the LLM."""
+    def _calculate_messages_size(self, messages: List[Dict[str, str]]) -> int:
+        """Calculate approximate size of messages in characters."""
+        total_size = 0
+        for msg in messages:
+            total_size += len(msg.get("content", "")) + len(msg.get("role", ""))
+        return total_size
+        
+    def _truncate_messages(self, messages: List[Dict[str, str]], target_size: int) -> List[Dict[str, str]]:
+        """Truncate messages to fit within target size, keeping system message and recent messages."""
+        if not messages:
+            return messages
+            
+        # Always keep the system message (first message)
+        truncated = [messages[0]] if messages[0].get("role") == "system" else []
+        current_size = self._calculate_messages_size(truncated)
+        
+        # Add messages from the end, working backwards
+        recent_messages = []
+        for msg in reversed(messages[1:]):
+            msg_size = len(msg.get("content", "")) + len(msg.get("role", ""))
+            if current_size + msg_size <= target_size:
+                recent_messages.insert(0, msg)  # Insert at beginning to maintain order
+                current_size += msg_size
+            else:
+                break
+        
+        # Combine system message with recent messages
+        truncated.extend(recent_messages)
+                
+        logger.info(f"🔄 Truncated messages from {len(messages)} to {len(truncated)} (size: {current_size} chars)")
+        return truncated
+            
+    async def gpt_call(self, messages: List[Dict[str, str]], last_successful_size: Optional[int] = None) -> str:
+        """Make a call to the LLM with automatic truncation on token limit errors."""
+        # Validate messages to prevent empty content that causes Bedrock API errors
+        validated_messages = []
+        for msg in messages:
+            content = msg.get("content", "").strip()
+            if not content:
+                logger.warning(f"⚠️ Skipping empty message with role: {msg.get('role', 'unknown')}")
+                continue
+            validated_messages.append({
+                "role": msg["role"],
+                "content": content
+            })
+        
+        if not validated_messages:
+            raise ValueError("No valid messages to send to LLM")
+        
+        # Try the call with original messages first
         try:
-            # Validate messages to prevent empty content that causes Bedrock API errors
-            validated_messages = []
-            for msg in messages:
-                content = msg.get("content", "").strip()
-                if not content:
-                    logger.warning(f"⚠️ Skipping empty message with role: {msg.get('role', 'unknown')}")
-                    continue
-                validated_messages.append({
-                    "role": msg["role"],
-                    "content": content
-                })
-            
-            if not validated_messages:
-                raise ValueError("No valid messages to send to LLM")
-            
             # Prepare completion parameters
             completion_params = {
                 "model": self.model,
@@ -359,8 +392,48 @@ class TLATranslator:
                 completion_params["model_id"] = self.model_id
             
             response = await acompletion(**completion_params)
-            return response["choices"][0]["message"]["content"]
+            result = response["choices"][0]["message"]["content"]
+            
+            current_size = self._calculate_messages_size(validated_messages)
+            logger.debug(f"✅ Successful call with message size: {current_size} chars")
+            
+            return result
+            
         except Exception as e:
+            error_str = str(e)
+            
+            # Check if this is a token limit error
+            is_token_limit_error = (
+                "Request body too large" in error_str or
+                "too large for" in error_str or
+                "Max size:" in error_str or
+                "maximum context length" in error_str or
+                "token limit" in error_str
+            )
+            
+            if is_token_limit_error and last_successful_size:
+                logger.warning(f"⚠️ Token limit exceeded, attempting truncation based on last successful size: {last_successful_size}")
+                
+                # Use 80% of last successful size as target to provide some buffer
+                target_size = int(last_successful_size * 0.8)
+                truncated_messages = self._truncate_messages(validated_messages, target_size)
+                
+                if len(truncated_messages) < len(validated_messages):
+                    try:
+                        # Retry with truncated messages
+                        completion_params["messages"] = truncated_messages
+                        response = await acompletion(**completion_params)
+                        result = response["choices"][0]["message"]["content"]
+                        
+                        logger.info(f"✅ Successful call after truncation")
+                        return result
+                        
+                    except Exception as retry_e:
+                        logger.error(f"❌ LLM call failed even after truncation: {retry_e}")
+                        raise retry_e
+                else:
+                    logger.warning("⚠️ No truncation possible, messages already at minimum size")
+            
             logger.error(f"❌ LLM call failed: {e}")
             raise
             
@@ -577,12 +650,16 @@ To read a resource:
         ]
         
         final_result = ""
+        last_successful_size = None
         
         for turn in range(max_turns):
             logger.info(f"🤖 Agent turn {turn + 1}/{max_turns}")
             
             # Get LLM response
-            content = await self.gpt_call(messages)
+            content = await self.gpt_call(messages, last_successful_size)
+            
+            # Update successful size for next iteration
+            last_successful_size = self._calculate_messages_size(messages)
             logger.debug(f"LLM Response: {content}")
             
             try:
