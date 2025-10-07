@@ -542,7 +542,7 @@ CRITICAL: You MUST respond with ONLY valid JSON. No explanations, no markdown, n
 
 {tools_description}
 
-## Response Format (JSON only)
+### Response Format (JSON only)
 
 To call a tool:
 {{"action": "call_tool", "tool": "<tool_name>", "params": {{"param1": "value1", "param2": "value2"}}}}
@@ -550,11 +550,17 @@ To call a tool:
 To read a resource:
 {{"action": "read_resource", "uri": "<resource_uri>"}}
 
-## Important Guidelines
+### Important Tool Usage Guidelines
 
+- **Valid actions**: Use only the actions listed above (call_tool and read_resource). Do not invent your own actions.
+- **One action per request**: Use only one action per request. You cannot invoke multiple actions in a single request.
 - **File Paths**: Use absolute file paths when required by tools. Current working directory: {self.workspace_root}
 - **Parameter Requirements**: Pay attention to [REQUIRED] vs [OPTIONAL] parameter markers above
 - **Parameter Types**: Ensure parameter values match the expected types (string, number, boolean, array)
+
+## Important TLA+ Usage Guidelines
+
+- **Divide and conquer**: If necessary, break down the problem into smaller sub-problems and solve them one by one.
 - **TLA+ Validation**: Always validate your TLA+ specifications by parsing them with SANY
 - **Configuration Files**: Generate appropriate TLC configuration files for model checking
 - **Error Handling**: Fix any syntax or configuration errors that arise based on tool feedback
