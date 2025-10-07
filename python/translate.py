@@ -22,11 +22,14 @@ USAGE:
     
     # Use AWS Bedrock
     python translate.py --model bedrock/anthropic.claude-sonnet-4-20250514-v1:0 --model-id arn:aws:bedrock:us-east-1:024871859028:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0 DieHard.md
+    
+    # Use GitHub Models
+    python translate.py --model github/Llama-3.2-11B-Vision-Instruct DieHard.md
 
 REQUIREMENTS:
     - TLA+ MCP server running on http://localhost:59071/mcp
     - Java with tla2tools.jar available in current directory
-    - API credentials for either Azure OpenAI or AWS Bedrock:
+    - API credentials for Azure OpenAI, AWS Bedrock, or GitHub Models:
       
       Azure OpenAI:
       - AZURE_API_KEY
@@ -933,7 +936,7 @@ Consult the TLA+ knowledge base when refining the specification."""
 
 
 def setup_environment():
-    """Setup environment variables for Azure OpenAI and AWS Bedrock."""
+    """Setup environment variables for Azure OpenAI, AWS Bedrock, and GitHub Models."""
     # Check for Azure OpenAI credentials
     if os.environ.get("AZURE_API_KEY"):
         logger.info(f"🔑 Using Azure API Base: {os.environ.get('AZURE_API_BASE')}")
@@ -949,11 +952,16 @@ def setup_environment():
         if os.environ.get("AWS_REGION"):
             logger.info(f"🔑 AWS Region: {os.environ.get('AWS_REGION')}")
     
+    # Check for GitHub Models credentials
+    elif os.environ.get("GITHUB_API_KEY"):
+        logger.info("🔑 Using GitHub Models authentication")
+    
     else:
         logger.warning("⚠️ No API credentials found. Please set either:")
         logger.warning("   - AZURE_API_KEY for Azure OpenAI")
         logger.warning("   - AWS_BEARER_TOKEN_BEDROCK for AWS Bedrock with bearer token")
         logger.warning("   - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY for AWS Bedrock")
+        logger.warning("   - GITHUB_API_KEY for GitHub Models")
 
 
 async def test_mcp_connection(mcp_url: str = "http://localhost:59071/mcp"):
@@ -1019,7 +1027,7 @@ async def main():
     parser.add_argument(
         "--model", 
         default="azure/gpt-4.1",
-        help="LLM model to use (default: azure/gpt-4.1). For Bedrock use format: bedrock/anthropic.claude-sonnet-4-20250514-v1:0"
+        help="LLM model to use (default: azure/gpt-4.1). Examples: azure/gpt-4o, bedrock/anthropic.claude-sonnet-4-20250514-v1:0, github/Llama-3.2-11B-Vision-Instruct"
     )
     parser.add_argument(
         "--model-id", 

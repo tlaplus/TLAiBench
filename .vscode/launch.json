@@ -44,6 +44,19 @@
                 "--debug"
             ],
  
+        },
+        {
+            "name": "Python Debugger: Github GPT-4.1",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "python/translate.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--model",
+                "github/gpt-4.1",
+                "--debug"
+            ],
+ 
         }
     ]
 }
