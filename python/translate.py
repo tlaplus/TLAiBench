@@ -550,9 +550,6 @@ To call a tool:
 To read a resource:
 {{"action": "read_resource", "uri": "<resource_uri>"}}
 
-To provide final answer:
-{{"action": "final_answer", "answer": "Your final response here"}}
-
 ## Important Guidelines
 
 - **File Paths**: Use absolute file paths when required by tools. Current working directory: {self.workspace_root}
@@ -652,16 +649,12 @@ To provide final answer:
                         "content": f"Resource Content ({mime_type}): {resource_content}"
                     })
                     
-            elif action.get("action") == "final_answer":
-                final_result = action["answer"]
-                logger.info(f"✅ Agent completed with final answer: {final_result}")
-                break
             else:
                 logger.warning(f"⚠️ Unknown action type: {action.get('action')}")
                 messages.append({"role": "assistant", "content": content})
                 messages.append({
                     "role": "system",
-                    "content": "Unknown action. Please use 'call_tool', 'read_resource', or 'final_answer'."
+                    "content": "Unknown action. Please use 'call_tool' or 'read_resource'."
                 })
                 
         return final_result or "Agent completed without explicit final answer"
