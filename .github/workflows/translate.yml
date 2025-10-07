@@ -1,0 +1,182 @@
+name: TLAiBench Python
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Model to use'
+        required: true
+        type: choice
+        default: 'github/gpt-4.1'
+        options:
+          - 'github/gpt-4.1'
+          - 'github/Llama-3.2-11B-Vision-Instruct'
+          - 'bedrock/anthropic.claude-sonnet-4-20250514-v1:0'
+      model_id:
+        description: 'Model ID (required for AWS Bedrock)'
+        required: false
+        type: string
+        default: ''
+      puzzle_files:
+        description: 'Puzzle files to process (space-separated)'
+        required: false
+        type: string
+        default: '../puzzles/DieHard.md'
+      debug:
+        description: 'Enable debug logging'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+    models: read
+    id-token: write   # required for OIDC
+    contents: read
+
+jobs:
+  benchmarks:
+    name: TLAiBench Python
+
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+
+      - name: Clone repo
+        uses: actions/checkout@v4
+        with:
+            ## All history for git diff below to succeed.
+            fetch-depth: 0
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::024871859028:role/GitHubActionsRole
+          aws-region: us-east-1
+
+      ## Provision VSCode
+      ##
+      ## Note: VSCode is being used to host the TLA+ MCP servers. This choice is a a workaround, as VSCode is fundamentally a desktop/UI application,
+      ## which introduces the complications below. I considered using code-server (https://github.com/coder/code-server), the headless version of VSCode,
+      ## as an alternative. However, I couldn't get it to automatically launch the TLA+ extension and its associated MCP servers. Another potential
+      ## approach would be to refactor the TLA+ VSCode extension to allow the MCP servers to be launched independently—either as standalone processes or
+      ## via GenAIScript.
+
+      - name: Install VSCode
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y apt-transport-https
+          curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
+          sudo mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg
+          echo "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" | sudo tee /etc/apt/sources.list.d/vscode.list
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y code xvfb
+
+      - name: Launch TLA+ VSCode extension hosting our MCP servers
+        run: |
+          ## Install TLA+ VSCode extension (doesn't require X11).
+          code --install-extension tlaplus.vscode-ide
+          ## Create X11 server to run VSCode.
+          export XDG_RUNTIME_DIR=/run/user/$(id -u)
+          export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+          dbus-daemon --session --address=$DBUS_SESSION_BUS_ADDRESS --nofork --nopidfile --syslog-only &
+          mkdir -p ~/.vscode && echo '{ "disable-hardware-acceleration": true }' > ~/.vscode/argv.json
+          /usr/bin/Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+          ## Setting tlaplus.mcp.port and disabling workspace trust are the magic sauce that activates the TLA+ MCP Servers at startup.
+          mkdir -p ~/.vscode && echo '{ "tlaplus.mcp.port": 59071, "tlaplus.mcp.enableFilesystemTools": true }' > .vscode/settings.json
+          DISPLAY=:99 code --no-sandbox --disable-gpu --disable-workspace-trust .
+          ## Allow vscode to come up before moving to ps and nc that validate that the MCP servers are up and running.
+          sleep 15
+          ps axu|grep vscode || true
+          nc -vz localhost 59071 || echo "MCP server not yet ready"
+
+      ## Provision TLA+ Tools
+      ##
+
+      - name: Get (nightly) TLC
+        run: wget https://nightly.tlapl.us/dist/tla2tools.jar
+
+      - name: Get (nightly) CommunityModules
+        run: wget https://github.com/tlaplus/CommunityModules/releases/latest/download/CommunityModules-deps.jar
+
+      ## Provision Python Environment
+      ##
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Python dependencies
+        run: |
+          cd python
+          pip install -r requirements.txt
+
+      - name: Test MCP connection
+        run: |
+          cd python
+          python translate.py --test-mcp
+        env:
+          GITHUB_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+
+      ## Run TLAi benchmarks
+      ##
+
+      - name: Run Python translate script on the logic puzzles
+        run: |
+          cd python
+          
+          # Build command arguments
+          ARGS="--model ${{ github.event.inputs.model }}"
+          
+          # Add model_id if provided (for AWS Bedrock)
+          if [ -n "${{ github.event.inputs.model_id }}" ]; then
+            ARGS="$ARGS --model-id ${{ github.event.inputs.model_id }}"
+          fi
+          
+          # Add debug flag if enabled
+          if [ "${{ github.event.inputs.debug }}" = "true" ]; then
+            ARGS="$ARGS --debug"
+          fi
+          
+          # Add puzzle files
+          ARGS="$ARGS ${{ github.event.inputs.puzzle_files }}"
+          
+          echo "Running: python translate.py $ARGS"
+          python translate.py $ARGS
+        env:
+          GITHUB_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+
+      ## Postprocess the TLAi benchmarks
+      ##
+
+      - name: List generated files
+        if: always()
+        run: |
+          echo "=== Generated TLA+ files ==="
+          ls -la *.tla *.cfg 2>/dev/null || echo "No TLA+ files generated"
+          
+          echo "=== Python logs ==="
+          # Show any log files if they exist
+          find . -name "*.log" -exec echo "=== {} ===" \; -exec cat {} \; 2>/dev/null || true
+
+      - name: Generate timestamp for artifact
+        id: timestamp
+        run: |
+          timestamp=$(date +%Y%m%d-%H%M%S)
+          echo "timestamp=${timestamp}" >> $GITHUB_OUTPUT
+
+      - name: Archive generated TLA+ specs (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          include-hidden-files: true
+          name: TLAiBenchResults-Python-${{ steps.timestamp.outputs.timestamp }}
+          path: |
+            *.tla
+            *.cfg
+            python/*.log
+            !gold/*.tla
+            !gold/*.cfg
