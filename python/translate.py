@@ -514,18 +514,10 @@ class TLATranslator:
             resource_descriptions.append("")
             
             for resource in self.available_resources:
-                resource_name = resource.get('name', resource.get('uri', 'Unknown'))
                 resource_desc = resource.get('description', 'No description available')
                 resource_uri = resource.get('uri', '')
-                resource_mime = resource.get('mimeType', 'unknown')
-                server_name = resource.get('server_name', 'unknown')
-                
-                resource_info = f"- **{resource_name}** (from {server_name})"
-                if resource_uri:
-                    resource_info += f"\n  URI: {resource_uri}"
-                if resource_mime and resource_mime != 'unknown':
-                    resource_info += f"\n  Type: {resource_mime}"
-                resource_info += f"\n  Description: {resource_desc}"
+                resource_info = f"- {resource_uri}"
+                resource_info += f": {resource_desc}"
                 
                 resource_descriptions.append(resource_info)
             
@@ -546,7 +538,7 @@ class TLATranslator:
 
 CRITICAL: You MUST respond with ONLY valid JSON. No explanations, no markdown, no additional text.
 
-## Available MCP Tools
+## Available MCP Tools and Resources
 
 {tools_description}
 
@@ -556,7 +548,7 @@ To call a tool:
 {{"action": "call_tool", "tool": "<tool_name>", "params": {{"param1": "value1", "param2": "value2"}}}}
 
 To read a resource:
-{{"action": "read_resource", "uri": "<resource_uri>", "server": "<server_name>"}}
+{{"action": "read_resource", "uri": "<resource_uri>"}}
 
 To provide final answer:
 {{"action": "final_answer", "answer": "Your final response here"}}
@@ -606,7 +598,7 @@ To provide final answer:
                 messages.append({"role": "assistant", "content": content})
                 messages.append({
                     "role": "system", 
-                    "content": "Please respond with valid JSON only. Use either {\"action\": \"call_tool\", \"tool\": \"<tool_name>\", \"params\": {...}} or {\"action\": \"final_answer\", \"answer\": \"...\"}"
+                    "content": "One action per request. Please respond with valid JSON only. Use either {\"action\": \"call_tool\", \"tool\": \"<tool_name>\", \"params\": {...}} or {\"action\": \"read_resource\", \"uri\": \"<resource_uri>\"}"
                 })
                 continue
                 
