@@ -126,8 +126,6 @@ jobs:
 
       - name: Run Python translate script on the logic puzzles
         run: |
-          cd python
-          
           # Build command arguments
           ARGS="--model ${{ github.event.inputs.model }}"
           
@@ -145,7 +143,7 @@ jobs:
           ARGS="$ARGS ${{ github.event.inputs.puzzle_files }}"
           
           echo "Running: python translate.py $ARGS"
-          python translate.py $ARGS
+          python python/translate.py $ARGS
         env:
           GITHUB_API_KEY: ${{ secrets.GITHUB_TOKEN }}
 
