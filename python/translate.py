@@ -646,7 +646,7 @@ class TLATranslator:
             
         return full_description
         
-    async def run_agent_prompt(self, user_prompt: str, max_turns: int = 15) -> str:
+    async def run_agent_prompt(self, user_prompt: str, max_turns: int = 25) -> str:
         """Run an agent-based prompt with MCP tool access using ReAct pattern."""
         tools_description = await self.create_tools_description()
         
