@@ -148,6 +148,9 @@ jobs:
           python python/translate.py $ARGS
         env:
           GITHUB_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
+          AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
+          AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
 
       ## Postprocess the TLAi benchmarks
       ##
