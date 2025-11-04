@@ -853,11 +853,7 @@ Consult the TLA+ knowledge base when refining the specification."""
                 phase_results["validation"] = "success"
             except Exception as e:
                 logger.error(f"❌ Phase 2 failed: {e}")
-                # Try to continue if files exist but validation failed
-                if not (Path(tla_file).exists() and Path(cfg_file).exists()):
-                    raise RuntimeError(f"TLA+ specification validation failed and files missing: {e}") from e
-                logger.warning("⚠️ Continuing despite validation failure")
-                phase_results["validation"] = f"failed: {e}"
+                raise RuntimeError(f"TLA+ specification validation failed: {e}") from e
             
             # Phase 3: Copy gold standard and synthesize trace refinement
             logger.info("🏆 Phase 3: Synthesizing trace refinement with gold standard")
@@ -885,37 +881,28 @@ Consult the TLA+ knowledge base when refining the specification."""
                 logger.info(f"✅ Created TLA+ trace refinement: {trace_ref_file}")
             except Exception as e:
                 logger.error(f"❌ Phase 3 failed: {e}")
-                logger.warning("⚠️ Continuing to full refinement despite trace refinement failure")
-                phase_results["trace_refinement"] = f"failed: {e}"
-                # Set default file names for phase 4 validation
-                trace_ref_file = f"{base_name}TraceRef.tla"
-                trace_cfg_file = f"{base_name}TraceRef.cfg"
+                raise RuntimeError(f"Trace refinement synthesis failed: {e}") from e
             
-            # Phase 4: Validate trace refinement (only if files exist)
-            if Path(trace_ref_file).exists() and Path(trace_cfg_file).exists():
-                logger.info("🔍 Phase 4: Validating trace refinement")
-                try:
-                    self.run_tlc_and_validate(trace_ref_file, trace_cfg_file, "Trace refinement validation", lambda code: code == 0)
-                    self.run_tlc_and_validate(
-                        trace_ref_file, trace_cfg_file, 
-                        "Trace refinement validation with refinement postcondition", 
-                        lambda code: code == 0, 
-                        ['-postcondition', f'{gold_file_module}!Refinement']
-                    )
-                    self.run_tlc_and_validate(
-                        trace_ref_file, trace_cfg_file,
-                        "Trace refinement validation with stats postcondition",
-                        lambda code: code == 0,
-                        ['-postcondition', f'{gold_file_module}!Stats']
-                    )
-                    phase_results["trace_validation"] = "success"
-                except Exception as e:
-                    logger.error(f"❌ Phase 4 failed: {e}")
-                    logger.warning("⚠️ Continuing to full refinement despite trace validation failure")
-                    phase_results["trace_validation"] = f"failed: {e}"
-            else:
-                logger.warning("⚠️ Skipping Phase 4: Trace refinement files not found")
-                phase_results["trace_validation"] = "skipped: files not found"
+            # Phase 4: Validate trace refinement
+            logger.info("🔍 Phase 4: Validating trace refinement")
+            try:
+                self.run_tlc_and_validate(trace_ref_file, trace_cfg_file, "Trace refinement validation", lambda code: code == 0)
+                self.run_tlc_and_validate(
+                    trace_ref_file, trace_cfg_file, 
+                    "Trace refinement validation with refinement postcondition", 
+                    lambda code: code == 0, 
+                    ['-postcondition', f'{gold_file_module}!Refinement']
+                )
+                self.run_tlc_and_validate(
+                    trace_ref_file, trace_cfg_file,
+                    "Trace refinement validation with stats postcondition",
+                    lambda code: code == 0,
+                    ['-postcondition', f'{gold_file_module}!Stats']
+                )
+                phase_results["trace_validation"] = "success"
+            except Exception as e:
+                logger.error(f"❌ Phase 4 failed: {e}")
+                raise RuntimeError(f"Trace refinement validation failed: {e}") from e
             
             # Phase 5: Synthesize full refinement
             logger.info("🔗 Phase 5: Synthesizing full refinement")
@@ -930,33 +917,28 @@ Consult the TLA+ knowledge base when refining the specification."""
                 logger.info(f"✅ Created TLA+ full refinement: {ref_tla_file}")
             except Exception as e:
                 logger.error(f"❌ Phase 5 failed: {e}")
-                logger.warning("⚠️ Continuing to validation despite full refinement failure")
-                phase_results["full_refinement"] = f"failed: {e}"
+                raise RuntimeError(f"Full refinement synthesis failed: {e}") from e
             
-            # Phase 6: Validate full refinement (only if files exist)
-            if Path(ref_tla_file).exists() and Path(ref_cfg_file).exists():
-                logger.info("🔍 Phase 6: Validating full refinement")
-                try:
-                    self.run_tlc_and_validate(ref_tla_file, ref_cfg_file, "Full refinement validation", lambda code: code == 0)
-                    self.run_tlc_and_validate(
-                        ref_tla_file, ref_cfg_file,
-                        "Full refinement validation with refinement postcondition",
-                        lambda code: code == 0,
-                        ['-postcondition', f'{gold_file_module}!Refinement']
-                    )
-                    self.run_tlc_and_validate(
-                        ref_tla_file, ref_cfg_file,
-                        "Full refinement validation with stats postcondition", 
-                        lambda code: code == 0,
-                        ['-postcondition', f'{gold_file_module}!Stats']
-                    )
-                    phase_results["full_validation"] = "success"
-                except Exception as e:
-                    logger.error(f"❌ Phase 6 failed: {e}")
-                    phase_results["full_validation"] = f"failed: {e}"
-            else:
-                logger.warning("⚠️ Skipping Phase 6: Full refinement files not found")
-                phase_results["full_validation"] = "skipped: files not found"
+            # Phase 6: Validate full refinement
+            logger.info("🔍 Phase 6: Validating full refinement")
+            try:
+                self.run_tlc_and_validate(ref_tla_file, ref_cfg_file, "Full refinement validation", lambda code: code == 0)
+                self.run_tlc_and_validate(
+                    ref_tla_file, ref_cfg_file,
+                    "Full refinement validation with refinement postcondition",
+                    lambda code: code == 0,
+                    ['-postcondition', f'{gold_file_module}!Refinement']
+                )
+                self.run_tlc_and_validate(
+                    ref_tla_file, ref_cfg_file,
+                    "Full refinement validation with stats postcondition", 
+                    lambda code: code == 0,
+                    ['-postcondition', f'{gold_file_module}!Stats']
+                )
+                phase_results["full_validation"] = "success"
+            except Exception as e:
+                logger.error(f"❌ Phase 6 failed: {e}")
+                raise RuntimeError(f"Full refinement validation failed: {e}") from e
             
             # Summary
             successful_phases = sum(1 for result in phase_results.values() if result == "success" or (isinstance(result, str) and not result.startswith("failed:")))
