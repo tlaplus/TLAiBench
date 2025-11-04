@@ -53,6 +53,7 @@ jobs:
             fetch-depth: 0
 
       - name: Configure AWS credentials (OIDC)
+        if: github.repository == 'tlaplus/TLAiBench'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::024871859028:role/GitHubActionsRole
