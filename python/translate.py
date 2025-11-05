@@ -766,6 +766,8 @@ Steps to complete:
 6. Verify the specification using the TLC model checker via the **tlaplus_mcp_tlc_check** tool
 7. Determine whether the expected counterexample is found
 
+Note: To find a puzzle solution using TLC, check the negation of the goal condition as an invariant in TLC. When TLC finds a counterexample to this invariant, the counterexample trace shows the solution steps.
+
 Do not ignore tool warnings or errors - correct them based on the feedback provided by the tools. Consult the TLA+ knowledge base when writing the specification."""
 
         result = await self.run_agent_prompt(prompt)
