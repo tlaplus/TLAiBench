@@ -680,7 +680,7 @@ To read a resource:
                 # Try to continue with a clarification
                 messages.append({"role": "assistant", "content": content})
                 messages.append({
-                    "role": "system", 
+                    "role": "user", 
                     "content": "One action per request. Please respond with valid JSON only. Use either {\"action\": \"call_tool\", \"tool\": \"<tool_name>\", \"params\": {...}} or {\"action\": \"read_resource\", \"uri\": \"<resource_uri>\"}"
                 })
                 continue
@@ -699,13 +699,13 @@ To read a resource:
                     logger.warning(f"⚠️ Tool {tool} returned error: {tool_response}")
                     error_msg = tool_response.get("error", "Unknown error")
                     messages.append({
-                        "role": "system",
+                        "role": "user",
                         "content": f"Tool Error: {tool} failed with error: {error_msg}. Please try a different approach or fix the issue."
                     })
                 else:
                     logger.info(f"✅ Tool {tool} completed successfully")
                     messages.append({
-                        "role": "system",
+                        "role": "user",
                         "content": f"Observation: {json.dumps(tool_response)}"
                     })
                     
@@ -723,7 +723,7 @@ To read a resource:
                     logger.warning(f"⚠️ Resource read failed: {resource_response}")
                     error_msg = resource_response.get("error", "Unknown error")
                     messages.append({
-                        "role": "system",
+                        "role": "user",
                         "content": f"Resource Error: Failed to read {resource_uri}: {error_msg}. Please try a different resource or approach."
                     })
                 else:
@@ -731,7 +731,7 @@ To read a resource:
                     resource_content = resource_response.get("content", "")
                     mime_type = resource_response.get("mimeType", "text/plain")
                     messages.append({
-                        "role": "system",
+                        "role": "user",
                         "content": f"Resource Content ({mime_type}): {resource_content}"
                     })
                     
@@ -739,7 +739,7 @@ To read a resource:
                 logger.warning(f"⚠️ Unknown action type: {action.get('action')}")
                 messages.append({"role": "assistant", "content": content})
                 messages.append({
-                    "role": "system",
+                    "role": "user",
                     "content": "Unknown action. Please use 'call_tool' or 'read_resource'."
                 })
                 
