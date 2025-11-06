@@ -267,10 +267,14 @@ class TLATranslator:
                                 
                             # Add server context to each resource
                             for resource in server_resources:
+                                # Convert URI to string in case it's an AnyUrl object
+                                uri_value = getattr(resource, 'uri', '')
+                                uri_str = str(uri_value) if uri_value else ''
+                                
                                 resource_info = {
                                     'server_name': server.server_name,
                                     'server_id': server_id,
-                                    'uri': getattr(resource, 'uri', ''),
+                                    'uri': uri_str,
                                     'name': getattr(resource, 'name', ''),
                                     'description': getattr(resource, 'description', ''),
                                     'mimeType': getattr(resource, 'mimeType', ''),
@@ -367,43 +371,41 @@ class TLATranslator:
             logger.error(f"❌ Failed to read MCP resource: {e}")
             return {"error": str(e), "isError": True}
             
-    def _calculate_messages_size(self, messages: List[Dict[str, str]]) -> int:
-        """Calculate approximate size of messages in characters."""
-        total_size = 0
-        for msg in messages:
-            total_size += len(msg.get("content", "")) + len(msg.get("role", ""))
-        return total_size
-        
-    def _truncate_messages(self, messages: List[Dict[str, str]], target_size: int) -> List[Dict[str, str]]:
-        """Truncate messages to fit within target size, keeping system message and recent messages."""
-        if not messages:
-            return messages
             
-        # Always keep the system message (first message)
-        truncated = [messages[0]] if messages[0].get("role") == "system" else []
-        current_size = self._calculate_messages_size(truncated)
+    async def gpt_call(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict]] = None, tool_choice: str = "auto") -> Dict[str, Any]:
+        """Make a call to the LLM.
         
-        # Add messages from the end, working backwards
-        recent_messages = []
-        for msg in reversed(messages[1:]):
-            msg_size = len(msg.get("content", "")) + len(msg.get("role", ""))
-            if current_size + msg_size <= target_size:
-                recent_messages.insert(0, msg)  # Insert at beginning to maintain order
-                current_size += msg_size
-            else:
-                break
-        
-        # Combine system message with recent messages
-        truncated.extend(recent_messages)
-                
-        logger.info(f"🔄 Truncated messages from {len(messages)} to {len(truncated)} (size: {current_size} chars)")
-        return truncated
-            
-    async def gpt_call(self, messages: List[Dict[str, str]], last_successful_size: Optional[int] = None) -> str:
-        """Make a call to the LLM with automatic truncation on token limit errors."""
+        Returns:
+            Dict containing either 'content' for regular responses or 'tool_calls' for tool calling responses.
+        """
         # Validate messages to prevent empty content that causes Bedrock API errors
         validated_messages = []
         for msg in messages:
+            # For tool messages, content can be empty in some cases, so handle them specially
+            if msg.get("role") == "tool":
+                # Tool messages must have tool_call_id and content
+                if "tool_call_id" in msg and "content" in msg:
+                    validated_messages.append({
+                        "role": msg["role"],
+                        "tool_call_id": msg["tool_call_id"],
+                        "content": msg["content"]
+                    })
+                else:
+                    logger.warning(f"⚠️ Skipping invalid tool message: missing tool_call_id or content")
+                continue
+            
+            # For assistant messages with tool calls, preserve tool_calls field
+            if msg.get("role") == "assistant" and "tool_calls" in msg:
+                validated_msg = {
+                    "role": msg["role"],
+                    "content": msg.get("content", "")
+                }
+                # Always include tool_calls for assistant messages that have them
+                validated_msg["tool_calls"] = msg["tool_calls"]
+                validated_messages.append(validated_msg)
+                continue
+            
+            # For regular messages, check content is not empty
             content = msg.get("content", "").strip()
             if not content:
                 logger.warning(f"⚠️ Skipping empty message with role: {msg.get('role', 'unknown')}")
@@ -416,64 +418,35 @@ class TLATranslator:
         if not validated_messages:
             raise ValueError("No valid messages to send to LLM")
         
-        # Try the call with original messages first
-        try:
-            # Prepare completion parameters
-            completion_params = {
-                "model": self.model,
-                "messages": validated_messages,
-                "stream": False,
+        # Prepare completion parameters
+        completion_params = {
+            "model": self.model,
+            "messages": validated_messages,
+            "stream": False,
+        }
+        
+        # Add tools if provided
+        if tools:
+            completion_params["tools"] = tools
+            completion_params["tool_choice"] = tool_choice
+        
+        # Add model_id if specified (required for AWS Bedrock)
+        if self.model_id:
+            completion_params["model_id"] = self.model_id
+        
+        response = await acompletion(**completion_params)
+        message = response["choices"][0]["message"]
+        
+        # Return different format based on whether tools were called
+        if message.get("tool_calls"):
+            return {
+                "tool_calls": message["tool_calls"],
+                "content": message.get("content", "")
             }
-            
-            # Add model_id if specified (required for AWS Bedrock)
-            if self.model_id:
-                completion_params["model_id"] = self.model_id
-            
-            response = await acompletion(**completion_params)
-            result = response["choices"][0]["message"]["content"]
-            
-            current_size = self._calculate_messages_size(validated_messages)
-            logger.debug(f"✅ Successful call with message size: {current_size} chars")
-            
-            return result
-            
-        except Exception as e:
-            error_str = str(e)
-            
-            # Check if this is a token limit error
-            is_token_limit_error = (
-                "Request body too large" in error_str or
-                "too large for" in error_str or
-                "Max size:" in error_str or
-                "maximum context length" in error_str or
-                "token limit" in error_str
-            )
-            
-            if is_token_limit_error and last_successful_size:
-                logger.warning(f"⚠️ Token limit exceeded, attempting truncation based on last successful size: {last_successful_size}")
-                
-                # Use 80% of last successful size as target to provide some buffer
-                target_size = int(last_successful_size * 0.8)
-                truncated_messages = self._truncate_messages(validated_messages, target_size)
-                
-                if len(truncated_messages) < len(validated_messages):
-                    try:
-                        # Retry with truncated messages
-                        completion_params["messages"] = truncated_messages
-                        response = await acompletion(**completion_params)
-                        result = response["choices"][0]["message"]["content"]
-                        
-                        logger.info(f"✅ Successful call after truncation")
-                        return result
-                        
-                    except Exception as retry_e:
-                        logger.error(f"❌ LLM call failed even after truncation: {retry_e}")
-                        raise retry_e
-                else:
-                    logger.warning("⚠️ No truncation possible, messages already at minimum size")
-            
-            logger.error(f"❌ LLM call failed: {e}")
-            raise
+        else:
+            return {
+                "content": message.get("content", "")
+            }
             
     async def call_mcp_tool(self, tool_name: str, params: Dict[str, Any], max_retries: int = 3, timeout: float = 60.0) -> Dict[str, Any]:
         """Call an MCP tool and return the result with retry logic and timeout handling."""
@@ -559,6 +532,73 @@ class TLATranslator:
             logger.error(f"❌ Failed to run TLC: {e}")
             raise
             
+    async def create_native_tools(self) -> List[Dict[str, Any]]:
+        """Convert MCP tools to native LLM tool format."""
+        native_tools = []
+        
+        for tool in self.available_tools:
+            tool_schema = {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                }
+            }
+            
+            # Convert input schema to parameters
+            if hasattr(tool, 'inputSchema') and tool.inputSchema:
+                schema = tool.inputSchema
+                if 'properties' in schema:
+                    tool_schema["function"]["parameters"] = {
+                        "type": "object",
+                        "properties": schema['properties'],
+                        "required": schema.get('required', [])
+                    }
+                else:
+                    # Default empty parameters if no properties
+                    tool_schema["function"]["parameters"] = {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+            else:
+                # Default empty parameters if no input schema
+                tool_schema["function"]["parameters"] = {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            
+            native_tools.append(tool_schema)
+        
+        # Add resource reading tool if resources are available
+        if self.available_resources:
+            resource_uris = [resource.get('uri', '') for resource in self.available_resources if resource.get('uri')]
+            resource_tool = {
+                "type": "function",
+                "function": {
+                    "name": "read_mcp_resource",
+                    "description": f"Read content from MCP resources.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "resource_uri": {
+                                "type": "string",
+                                "description": f"URI of the resource to read. Available options: {', '.join(resource_uris)}"
+                            },
+                            "server_name": {
+                                "type": "string",
+                                "description": "Optional server name (defaults to first available server)"
+                            }
+                        },
+                        "required": ["resource_uri"]
+                    }
+                }
+            }
+            native_tools.append(resource_tool)
+        
+        return native_tools
+
     async def create_tools_description(self) -> str:
         """Create a comprehensive description of available MCP tools and resources for the LLM."""
         tool_descriptions = []
@@ -646,33 +686,12 @@ class TLATranslator:
             
         return full_description
         
-    async def run_agent_prompt(self, user_prompt: str, max_turns: int = 25) -> str:
-        """Run an agent-based prompt with MCP tool access using ReAct pattern."""
-        tools_description = await self.create_tools_description()
+    async def run_agent_prompt(self, user_prompt: str, max_turns: int = 15) -> str:
+        """Run an agent-based prompt with native tool calling support."""
+        # Get native tools format
+        native_tools = await self.create_native_tools()
         
-        system_prompt = f"""You are an autonomous AI agent that can use MCP tools to accomplish TLA+ development tasks.
-
-CRITICAL: You MUST respond with ONLY valid JSON. No explanations, no markdown, no additional text.
-
-## Available MCP Tools and Resources
-
-{tools_description}
-
-### Response Format (JSON only)
-
-To call a tool:
-{{"action": "call_tool", "tool": "<tool_name>", "params": {{"param1": "value1", "param2": "value2"}}}}
-
-To read a resource:
-{{"action": "read_resource", "uri": "<resource_uri>"}}
-
-### Important Tool Usage Guidelines
-
-- **Valid actions**: Use only the actions listed above (call_tool and read_resource). Do not invent your own actions.
-- **One action per request**: Use only one action per request. You cannot invoke multiple actions in a single request.
-- **File Paths**: Use absolute file paths when required by tools. Current working directory: {self.workspace_root}
-- **Parameter Requirements**: Pay attention to [REQUIRED] vs [OPTIONAL] parameter markers above
-- **Parameter Types**: Ensure parameter values match the expected types (string, number, boolean, array)
+        system_prompt = f"""You are an autonomous AI agent that can use tools to accomplish TLA+ development tasks.
 
 ## Important TLA+ Usage Guidelines
 
@@ -682,6 +701,9 @@ To read a resource:
 - **Error Handling**: Fix any syntax or configuration errors that arise based on tool feedback
 - **Best Practices**: Follow TLA+ best practices and conventions
 - **Reuse existing modules**: Try to reuse existing operators and modules from the TLA+ standard and Community Modules.
+- **File Paths**: Use absolute file paths when required by tools. Current working directory: {self.workspace_root}
+
+You have access to tools for TLA+ development including parsing, model checking, and file operations. Use them as needed to complete the task.
 """
 
         messages = [
@@ -690,98 +712,96 @@ To read a resource:
         ]
         
         final_result = ""
-        last_successful_size = None
         
         for turn in range(max_turns):
             logger.info(f"🤖 Agent turn {turn + 1}/{max_turns}")
             
-            # Get LLM response
-            content = await self.gpt_call(messages, last_successful_size)
+            # Get LLM response with tools
+            response = await self.gpt_call(messages, tools=native_tools, tool_choice="auto")
             
-            # Update successful size for next iteration
-            last_successful_size = self._calculate_messages_size(messages)
-            logger.debug(f"LLM Response: {content}")
-            
-            try:
-                # Strip markdown code blocks if present
-                cleaned_content = content.strip()
-                if cleaned_content.startswith("```json"):
-                    cleaned_content = cleaned_content[7:]  # Remove ```json
-                if cleaned_content.startswith("```"):
-                    cleaned_content = cleaned_content[3:]   # Remove ```
-                if cleaned_content.endswith("```"):
-                    cleaned_content = cleaned_content[:-3]  # Remove trailing ```
-                cleaned_content = cleaned_content.strip()
+            # Handle tool calls
+            if "tool_calls" in response and response["tool_calls"]:
+                # Add assistant message with tool calls
+                assistant_message = {
+                    "role": "assistant",
+                    "content": response.get("content", ""),
+                    "tool_calls": response["tool_calls"]
+                }
+                messages.append(assistant_message)
                 
-                action = json.loads(cleaned_content)
-            except json.JSONDecodeError as e:
-                logger.warning(f"⚠️ LLM did not return valid JSON: {e}")
-                logger.debug(f"Raw content: {content}")
-                # Try to continue with a clarification
-                messages.append({"role": "assistant", "content": content})
-                messages.append({
-                    "role": "user", 
-                    "content": "One action per request. Please respond with valid JSON only. Use either {\"action\": \"call_tool\", \"tool\": \"<tool_name>\", \"params\": {...}} or {\"action\": \"read_resource\", \"uri\": \"<resource_uri>\"}"
-                })
-                continue
-                
-            if action.get("action") == "call_tool":
-                tool = action["tool"]
-                params = action.get("params", {})
-                
-                logger.info(f"🔧 Calling MCP tool: {tool} with {params}")
-                tool_response = await self.call_mcp_tool(tool, params)
-                
-                messages.append({"role": "assistant", "content": content})
-                
-                # Handle tool errors more gracefully
-                if tool_response.get("isError"):
-                    logger.warning(f"⚠️ Tool {tool} returned error: {tool_response}")
-                    error_msg = tool_response.get("error", "Unknown error")
-                    messages.append({
-                        "role": "user",
-                        "content": f"Tool Error: {tool} failed with error: {error_msg}. Please try a different approach or fix the issue."
-                    })
-                else:
-                    logger.info(f"✅ Tool {tool} completed successfully")
-                    messages.append({
-                        "role": "user",
-                        "content": f"Observation: {json.dumps(tool_response)}"
-                    })
+                # Process each tool call
+                for tool_call in response["tool_calls"]:
+                    tool_name = tool_call["function"]["name"]
+                    try:
+                        # Parse arguments - they come as a JSON string
+                        tool_args = json.loads(tool_call["function"]["arguments"])
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"⚠️ Failed to parse tool arguments: {e}")
+                        tool_args = {}
                     
-            elif action.get("action") == "read_resource":
-                resource_uri = action.get("uri", "")
-                server_name = action.get("server", "")
-                
-                logger.info(f"📚 Reading MCP resource: {resource_uri} from {server_name}")
-                resource_response = await self.read_mcp_resource(resource_uri, server_name)
-                
-                messages.append({"role": "assistant", "content": content})
-                
-                # Handle resource read errors more gracefully
-                if resource_response.get("isError"):
-                    logger.warning(f"⚠️ Resource read failed: {resource_response}")
-                    error_msg = resource_response.get("error", "Unknown error")
-                    messages.append({
-                        "role": "user",
-                        "content": f"Resource Error: Failed to read {resource_uri}: {error_msg}. Please try a different resource or approach."
-                    })
-                else:
-                    logger.info(f"✅ Resource {resource_uri} read successfully")
-                    resource_content = resource_response.get("content", "")
-                    mime_type = resource_response.get("mimeType", "text/plain")
-                    messages.append({
-                        "role": "user",
-                        "content": f"Resource Content ({mime_type}): {resource_content}"
-                    })
+                    logger.info(f"🔧 Calling tool: {tool_name} with {tool_args}")
+                    
+                    # Handle special resource reading tool
+                    if tool_name == "read_mcp_resource":
+                        resource_uri = tool_args.get("resource_uri", "")
+                        server_name = tool_args.get("server_name", "")
+                        tool_response = await self.read_mcp_resource(resource_uri, server_name)
+                    else:
+                        # Call the MCP tool
+                        tool_response = await self.call_mcp_tool(tool_name, tool_args)
+                    
+                    # Format tool response
+                    if tool_response.get("isError"):
+                        logger.warning(f"⚠️ Tool {tool_name} returned error: {tool_response}")
+                        tool_result = f"Error: {tool_response.get('error', 'Unknown error')}"
+                    else:
+                        logger.info(f"✅ Tool {tool_name} completed successfully")
+                        
+                        # Handle resource response format
+                        if tool_name == "read_mcp_resource":
+                            content = tool_response.get("content", "")
+                            mime_type = tool_response.get("mimeType", "text/plain")
+                            tool_result = f"Resource Content ({mime_type}):\n{content}"
+                        else:
+                            # Extract content from MCP tool response
+                            if "content" in tool_response:
+                                if isinstance(tool_response["content"], list):
+                                    # Handle list of content items
+                                    content_parts = []
+                                    for item in tool_response["content"]:
+                                        if isinstance(item, dict) and "text" in item:
+                                            content_parts.append(item["text"])
+                                        else:
+                                            content_parts.append(str(item))
+                                    tool_result = "\n".join(content_parts)
+                                else:
+                                    tool_result = str(tool_response["content"])
+                            else:
+                                tool_result = json.dumps(tool_response)
+                    
+                    # Add tool result message
+                    tool_message = {
+                        "role": "tool",
+                        "tool_call_id": tool_call["id"],
+                        "content": tool_result
+                    }
+                    messages.append(tool_message)
                     
             else:
-                logger.warning(f"⚠️ Unknown action type: {action.get('action')}")
-                messages.append({"role": "assistant", "content": content})
-                messages.append({
-                    "role": "user",
-                    "content": "Unknown action. Please use 'call_tool' or 'read_resource'."
-                })
+                # Regular response without tool calls
+                content = response.get("content", "")
+                if content:
+                    logger.info(f"📝 Agent response: {content[:100]}{'...' if len(content) > 100 else ''}")
+                    final_result = content
+                    messages.append({"role": "assistant", "content": content})
+                    
+                    # Check if this looks like a final answer
+                    if any(phrase in content.lower() for phrase in ["completed", "finished", "done", "final", "summary"]):
+                        logger.info("🎯 Agent indicated completion")
+                        break
+                else:
+                    logger.warning("⚠️ Received empty response from LLM")
+                    break
                 
         return final_result or "Agent completed without explicit final answer"
         
