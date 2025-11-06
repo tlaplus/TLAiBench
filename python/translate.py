@@ -93,6 +93,44 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def detect_workspace_root() -> Path:
+    """
+    Detect the workspace root directory by looking for key files.
+    
+    This function searches for the project root by looking for key files
+    that indicate the TLAiBench project directory structure.
+    
+    Returns:
+        Path: The detected workspace root directory
+        
+    The detection logic:
+    1. Starts from current directory and walks up the directory tree
+    2. Looks for key files/directories: tla2tools.jar, README.md, puzzles, gold
+    3. Falls back to checking if we're in the python subdirectory
+    4. Defaults to current directory if detection fails
+    """
+    current = Path.cwd()
+    
+    # Look for key files that indicate the project root
+    key_files = ['tla2tools.jar', 'README.md', 'puzzles', 'gold']
+    
+    # Start from current directory and walk up
+    for path in [current] + list(current.parents):
+        # Check if this directory contains the key files/directories
+        if all((path / key).exists() for key in key_files):
+            logger.debug(f"Detected workspace root: {path}")
+            return path
+            
+    # If we can't find the root, check if we're in the python subdirectory
+    if current.name == "python" and (current.parent / 'tla2tools.jar').exists():
+        logger.debug(f"Detected workspace root from python subdirectory: {current.parent}")
+        return current.parent
+        
+    # Default to current directory if we can't detect the root
+    logger.warning(f"Could not detect workspace root, using current directory: {current}")
+    return current
+
+
 class TLATranslator:
     """Main class for translating natural language to TLA+ specifications."""
     
@@ -103,7 +141,7 @@ class TLATranslator:
         self.mcp_server_manager = None
         self.available_tools = []
         self.available_resources = []
-        self.workspace_root = Path.cwd()
+        self.workspace_root = detect_workspace_root()
         
     async def setup_mcp_connection(self, max_retries: int = 3, timeout: float = 30.0):
         """Initialize MCP server connection and discover available tools with retry logic."""
@@ -496,8 +534,10 @@ class TLATranslator:
         if extra_args is None:
             extra_args = []
             
+        # Use absolute path to tla2tools.jar from workspace root
+        tla2tools_path = self.workspace_root / 'tla2tools.jar'
         args = [
-            'java', '-XX:+UseParallelGC', '-jar', 'tla2tools.jar', 
+            'java', '-XX:+UseParallelGC', '-jar', str(tla2tools_path), 
             tla_file, '-config', cfg_file, '-note', '-cleanup'
         ] + extra_args
         
@@ -964,8 +1004,9 @@ Consult the TLA+ knowledge base when refining the specification."""
         # Verify TLC installation
         logger.info("🔧 Verifying TLC installation")
         try:
+            tla2tools_path = self.workspace_root / 'tla2tools.jar'
             result = subprocess.run(
-                ['java', '-XX:+UseParallelGC', '-jar', 'tla2tools.jar'], 
+                ['java', '-XX:+UseParallelGC', '-jar', str(tla2tools_path)], 
                 capture_output=True, text=True, cwd=self.workspace_root
             )
             if result.returncode != 1:  # TLC should exit with code 1 when run without arguments
