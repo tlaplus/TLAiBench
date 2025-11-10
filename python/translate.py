@@ -3,7 +3,27 @@
 NL2TLA+ Translation Script
 
 Translates natural language descriptions of TLA+ specifications into TLA+ specifications.
-This is a Python migration of the GenAI script translate.genai.mts using LiteLLM and MCP tools.
+This is a Python migration of the GenAI script translate.genai.mts using LiteLLM with MCP tool calling.
+
+MCP Tool Calling:
+This script supports two modes of tool calling with **automatic detection**:
+
+1. **MCP Tool Calling** (Auto-detected):
+   Uses LiteLLM's native MCP tool calling as described in:
+   - Anthropic: https://docs.litellm.ai/docs/providers/anthropic#mcp-tool-calling
+   - OpenAI: https://platform.openai.com/docs/guides/tools-connectors-mcp
+   Passes MCP server configuration directly to the LLM provider's API.
+   Requires publicly accessible MCP server.
+   Known to work with: Anthropic Claude, OpenAI GPT-5
+
+2. **Native Tool Calling** (Fallback):
+   Converts MCP tools to OpenAI function calling format.
+   Works with any LiteLLM-supported provider.
+   Executes tools locally via MCP server manager.
+   Works with: Bedrock, Azure, GitHub, GPT-4, and any other provider
+
+The script automatically tries MCP format first, then falls back to native tools if unsupported.
+No manual configuration needed!
 
 USAGE:
     python translate.py [puzzle_files...]
@@ -142,6 +162,7 @@ class TLATranslator:
         self.available_tools = []
         self.available_resources = []
         self.workspace_root = detect_workspace_root()
+        self._mcp_tool_calling_supported = None  # Cache for MCP support detection
         
     async def setup_mcp_connection(self, max_retries: int = 3, timeout: float = 30.0):
         """Initialize MCP server connection and discover available tools with retry logic."""
@@ -449,7 +470,12 @@ class TLATranslator:
             }
             
     async def call_mcp_tool(self, tool_name: str, params: Dict[str, Any], max_retries: int = 3, timeout: float = 60.0) -> Dict[str, Any]:
-        """Call an MCP tool and return the result with retry logic and timeout handling."""
+        """Call an MCP tool locally and return the result with retry logic and timeout handling.
+        
+        This method executes tools via our local MCP server manager connection.
+        When using MCP tool calling, the LLM provider may also execute tools directly
+        by connecting to the publicly accessible MCP server.
+        """
         for attempt in range(max_retries):
             try:
                 logger.debug(f"🔧 Calling MCP tool: {tool_name} with {params} (attempt {attempt + 1}/{max_retries})")
@@ -532,8 +558,46 @@ class TLATranslator:
             logger.error(f"❌ Failed to run TLC: {e}")
             raise
             
+    async def create_mcp_tools_config(self) -> List[Dict[str, Any]]:
+        """Create MCP tools configuration for direct MCP tool calling.
+        
+        Uses LiteLLM's native MCP tool calling support as described in:
+        - Anthropic: https://docs.litellm.ai/docs/providers/anthropic#mcp-tool-calling
+        - OpenAI: https://platform.openai.com/docs/guides/tools-connectors-mcp
+        
+        Instead of converting MCP tools to OpenAI function calling format,
+        we pass the MCP server configuration directly to the LLM provider.
+        The LLM provider will:
+        1. Discover available tools from the publicly accessible MCP server
+        2. Execute tool calls by directly connecting to the MCP server
+        3. Return results in the tool calling conversation flow
+        
+        IMPORTANT: 
+        - The MCP server must be publicly accessible by the LLM provider
+        - For local development with localhost, use a tunnel service (ngrok, etc.)
+        - This is auto-detected - if unsupported, the script falls back to native tools
+        """
+        mcp_tools = []
+        
+        # Add MCP server configuration - URL must be publicly accessible
+        mcp_tools.append({
+            "type": "mcp",
+            "server_label": "tlaplus_mcp_server",
+            "server_url": self.mcp_url,  # Must be publicly accessible URL
+            "require_approval": "never",  # Auto-approve all tool calls
+        })
+        
+        return mcp_tools
+    
     async def create_native_tools(self) -> List[Dict[str, Any]]:
-        """Convert MCP tools to native LLM tool format."""
+        """Convert MCP tools to native OpenAI function calling format.
+        
+        This is used as a fallback when MCP tool calling is not supported by the provider.
+        The script automatically detects MCP support and falls back to this method when needed.
+        
+        Works with all LiteLLM-supported providers and allows using localhost MCP servers
+        since tools are executed locally via our MCP server manager.
+        """
         native_tools = []
         
         for tool in self.available_tools:
@@ -570,32 +634,6 @@ class TLATranslator:
                 }
             
             native_tools.append(tool_schema)
-        
-        # Add resource reading tool if resources are available
-        if self.available_resources:
-            resource_uris = [resource.get('uri', '') for resource in self.available_resources if resource.get('uri')]
-            resource_tool = {
-                "type": "function",
-                "function": {
-                    "name": "read_mcp_resource",
-                    "description": f"Read content from MCP resources.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "resource_uri": {
-                                "type": "string",
-                                "description": f"URI of the resource to read. Available options: {', '.join(resource_uris)}"
-                            },
-                            "server_name": {
-                                "type": "string",
-                                "description": "Optional server name (defaults to first available server)"
-                            }
-                        },
-                        "required": ["resource_uri"]
-                    }
-                }
-            }
-            native_tools.append(resource_tool)
         
         return native_tools
 
@@ -687,9 +725,40 @@ class TLATranslator:
         return full_description
         
     async def run_agent_prompt(self, user_prompt: str, max_turns: int = 15) -> str:
-        """Run an agent-based prompt with native tool calling support."""
-        # Get native tools format
-        native_tools = await self.create_native_tools()
+        """Run an agent-based prompt with MCP tool calling support or native tools."""
+        # Determine which tool mode to use - try MCP first if not already cached
+        if self._mcp_tool_calling_supported is None:
+            # Try MCP first with a simple test call
+            logger.info("🔍 Detecting MCP tool calling support...")
+            try:
+                mcp_tools = await self.create_mcp_tools_config()
+                # Make a test call to see if MCP format is accepted
+                test_messages = [
+                    {"role": "user", "content": "Hello, can you see the available tools?"}
+                ]
+                test_response = await self.gpt_call(test_messages, tools=mcp_tools, tool_choice="auto")
+                # If we get here without error, MCP is supported
+                self._mcp_tool_calling_supported = True
+                logger.info("✅ MCP tool calling supported by this model")
+            except Exception as e:
+                # Check if it's an MCP-related error (validation, unsupported format, etc.)
+                error_msg = str(e).lower()
+                if any(keyword in error_msg for keyword in ['validation', 'toolconfig', 'tools.', 'toolspec', 'mcp']):
+                    logger.info(f"ℹ️ MCP tool calling not supported, falling back to native tools (error: {str(e)[:100]})")
+                    self._mcp_tool_calling_supported = False
+                else:
+                    # Some other error - re-raise it
+                    raise
+        
+        # Use cached result
+        if self._mcp_tool_calling_supported:
+            logger.info("🔧 Using MCP tool calling format")
+            tools = await self.create_mcp_tools_config()
+            tool_mode = "MCP"
+        else:
+            logger.info("🔧 Using native tool calling format")
+            tools = await self.create_native_tools()
+            tool_mode = "native"
         
         system_prompt = f"""You are an autonomous AI agent that can use tools to accomplish TLA+ development tasks.
 
@@ -704,6 +773,10 @@ class TLATranslator:
 - **File Paths**: Use absolute file paths when required by tools. Current working directory: {self.workspace_root}
 
 You have access to tools for TLA+ development including parsing, model checking, and file operations. Use them as needed to complete the task.
+
+## Available Tools
+
+{await self.create_tools_description()}
 """
 
         messages = [
@@ -714,12 +787,12 @@ You have access to tools for TLA+ development including parsing, model checking,
         final_result = ""
         
         for turn in range(max_turns):
-            logger.info(f"🤖 Agent turn {turn + 1}/{max_turns}")
+            logger.info(f"🤖 Agent turn {turn + 1}/{max_turns} (tool mode: {tool_mode})")
             
             # Get LLM response with tools
-            response = await self.gpt_call(messages, tools=native_tools, tool_choice="auto")
+            response = await self.gpt_call(messages, tools=tools, tool_choice="auto")
             
-            # Handle tool calls
+            # Handle tool calls (LiteLLM still returns tool calls for us to execute)
             if "tool_calls" in response and response["tool_calls"]:
                 # Add assistant message with tool calls
                 assistant_message = {
@@ -741,14 +814,8 @@ You have access to tools for TLA+ development including parsing, model checking,
                     
                     logger.info(f"🔧 Calling tool: {tool_name} with {tool_args}")
                     
-                    # Handle special resource reading tool
-                    if tool_name == "read_mcp_resource":
-                        resource_uri = tool_args.get("resource_uri", "")
-                        server_name = tool_args.get("server_name", "")
-                        tool_response = await self.read_mcp_resource(resource_uri, server_name)
-                    else:
-                        # Call the MCP tool
-                        tool_response = await self.call_mcp_tool(tool_name, tool_args)
+                    # Call the MCP tool via the MCP server manager
+                    tool_response = await self.call_mcp_tool(tool_name, tool_args)
                     
                     # Format tool response
                     if tool_response.get("isError"):
@@ -757,27 +824,21 @@ You have access to tools for TLA+ development including parsing, model checking,
                     else:
                         logger.info(f"✅ Tool {tool_name} completed successfully")
                         
-                        # Handle resource response format
-                        if tool_name == "read_mcp_resource":
-                            content = tool_response.get("content", "")
-                            mime_type = tool_response.get("mimeType", "text/plain")
-                            tool_result = f"Resource Content ({mime_type}):\n{content}"
-                        else:
-                            # Extract content from MCP tool response
-                            if "content" in tool_response:
-                                if isinstance(tool_response["content"], list):
-                                    # Handle list of content items
-                                    content_parts = []
-                                    for item in tool_response["content"]:
-                                        if isinstance(item, dict) and "text" in item:
-                                            content_parts.append(item["text"])
-                                        else:
-                                            content_parts.append(str(item))
-                                    tool_result = "\n".join(content_parts)
-                                else:
-                                    tool_result = str(tool_response["content"])
+                        # Extract content from MCP tool response
+                        if "content" in tool_response:
+                            if isinstance(tool_response["content"], list):
+                                # Handle list of content items
+                                content_parts = []
+                                for item in tool_response["content"]:
+                                    if isinstance(item, dict) and "text" in item:
+                                        content_parts.append(item["text"])
+                                    else:
+                                        content_parts.append(str(item))
+                                tool_result = "\n".join(content_parts)
                             else:
-                                tool_result = json.dumps(tool_response)
+                                tool_result = str(tool_response["content"])
+                        else:
+                            tool_result = json.dumps(tool_response)
                     
                     # Add tool result message
                     tool_message = {

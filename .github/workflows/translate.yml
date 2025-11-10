@@ -98,6 +98,14 @@ jobs:
           ps axu|grep vscode || true
           nc -vz localhost 59071 || echo "MCP server not yet ready"
 
+      - name: Setup cloudflared
+        uses: AnimMouse/setup-cloudflared@v2
+      
+      - name: Setup cloudflared tunnel
+        uses: AnimMouse/setup-cloudflared/tunnel@v2
+        with:
+          url: http://localhost:59071
+
       ## Provision TLA+ Tools
       ##
 
