@@ -481,8 +481,13 @@ class TLATranslator:
                 logger.debug(f"🔧 Calling MCP tool: {tool_name} with {params} (attempt {attempt + 1}/{max_retries})")
                 
                 # Use asyncio.wait_for to add timeout protection
+                server_name = getattr(self, "_mcp_server_name", "tlaplus_mcp_server")
                 tool_result = await asyncio.wait_for(
-                    self.mcp_server_manager.call_tool(name=tool_name, arguments=params),
+                    self.mcp_server_manager.call_tool(
+                        server_name=server_name,
+                        name=tool_name,
+                        arguments=params,
+                    ),
                     timeout=timeout
                 )
                 
@@ -1159,7 +1164,7 @@ async def test_mcp_connection(mcp_url: str = "http://localhost:59071/mcp"):
                 "transport": MCPTransport.http,
             }
         }
-        mcp_server_manager.load_servers_from_config(config)
+        await mcp_server_manager.load_servers_from_config(config)
         logger.info("✅ MCP server manager configured successfully!")
         
         # List available tools
@@ -1173,7 +1178,9 @@ async def test_mcp_connection(mcp_url: str = "http://localhost:59071/mcp"):
         # Test calling a simple tool
         try:
             tool_response = await mcp_server_manager.call_tool(
-                name="tlaplus_mcp_sany_modules", arguments={}
+                server_name="tlaplus_mcp_server",
+                name="tlaplus_mcp_sany_modules",
+                arguments={},
             )
             logger.info(f"🎯 Test tool call successful: {type(tool_response)}")
             
