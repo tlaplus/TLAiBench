@@ -180,8 +180,8 @@ class TLATranslator:
                         "transport": MCPTransport.http,
                     }
                 }
-                
-                self.mcp_server_manager.load_servers_from_config(config)
+                self._mcp_server_name = "tlaplus_mcp_server"
+                await self.mcp_server_manager.load_servers_from_config(config)
                 logger.info("✅ MCP server manager configured successfully!")
                 
                 # Discover available tools with timeout
