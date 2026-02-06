@@ -264,60 +264,38 @@ class TLATranslator:
                     client = self.mcp_server_manager._create_mcp_client(server)
                     
                     try:
-                        # Connect to the server
-                        await asyncio.wait_for(client.connect(), timeout=timeout)
+                        # List resources using the new run_with_session pattern
+                        # The MCPClient.list_resources() method handles the session lifecycle internally
+                        server_resources = await asyncio.wait_for(
+                            client.list_resources(),
+                            timeout=timeout
+                        )
                         
-                        # Try to list resources using the MCP protocol
-                        # This uses the resources/list method from the MCP specification
-                        # The LiteLLM MCPClient doesn't expose list_resources directly,
-                        # but the underlying session does
-                        try:
-                            if hasattr(client, '_session') and hasattr(client._session, 'list_resources'):
-                                resources_result = await asyncio.wait_for(
-                                    client._session.list_resources(),
-                                    timeout=timeout
-                                )
-                            else:
-                                logger.debug(f"⚠️ Client for {server.server_name} doesn't have session.list_resources")
-                                continue
+                        # Add server context to each resource
+                        for resource in server_resources:
+                            # Convert URI to string in case it's an AnyUrl object
+                            uri_value = getattr(resource, 'uri', '')
+                            uri_str = str(uri_value) if uri_value else ''
                             
-                            if hasattr(resources_result, 'resources'):
-                                server_resources = resources_result.resources
-                            else:
-                                server_resources = resources_result
-                                
-                            # Add server context to each resource
-                            for resource in server_resources:
-                                # Convert URI to string in case it's an AnyUrl object
-                                uri_value = getattr(resource, 'uri', '')
-                                uri_str = str(uri_value) if uri_value else ''
-                                
-                                resource_info = {
-                                    'server_name': server.server_name,
-                                    'server_id': server_id,
-                                    'uri': uri_str,
-                                    'name': getattr(resource, 'name', ''),
-                                    'description': getattr(resource, 'description', ''),
-                                    'mimeType': getattr(resource, 'mimeType', ''),
-                                }
-                                resources.append(resource_info)
-                                
-                            logger.info(f"✅ Found {len(server_resources)} resources from {server.server_name}")
+                            resource_info = {
+                                'server_name': server.server_name,
+                                'server_id': server_id,
+                                'uri': uri_str,
+                                'name': getattr(resource, 'name', ''),
+                                'description': getattr(resource, 'description', ''),
+                                'mimeType': getattr(resource, 'mimeType', ''),
+                            }
+                            resources.append(resource_info)
                             
-                        except AttributeError:
-                            # Server might not support list_resources method
-                            logger.debug(f"⚠️ Server {server.server_name} does not support list_resources")
-                        except Exception as e:
-                            logger.debug(f"⚠️ Failed to list resources from {server.server_name}: {e}")
-                            
-                    finally:
-                        try:
-                            await client.disconnect()
-                        except:
-                            pass
-                            
+                        logger.info(f"✅ Found {len(server_resources)} resources from {server.server_name}")
+                        
+                    except asyncio.TimeoutError:
+                        logger.warning(f"⏱️ Timeout listing resources from {server.server_name}")
+                    except Exception as e:
+                        logger.debug(f"⚠️ Failed to list resources from {server.server_name}: {e}")
+                        
                 except Exception as e:
-                    logger.warning(f"⚠️ Failed to connect to server {server.server_name}: {e}")
+                    logger.warning(f"⚠️ Failed to create client for server {server.server_name}: {e}")
                     continue
                     
         except Exception as e:
