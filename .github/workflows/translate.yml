@@ -10,6 +10,7 @@ on:
         default: 'github/gpt-4.1'
         options:
           - 'github/gpt-4.1'
+          - 'github/gpt-5'
           - 'github/Llama-3.2-11B-Vision-Instruct'
           - 'anthropic/claude-sonnet-4-5-20250929'
           - 'openai/gpt-5'
