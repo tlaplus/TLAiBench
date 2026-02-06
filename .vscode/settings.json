@@ -1,4 +1,5 @@
 {
     "tlaplus.tlc.modelChecker.options": "-workers 1 -coverage 1",
-    "tlaplus.mcp.enableFilesystemTools": true
+    "tlaplus.mcp.enableFilesystemTools": true,
+    "tlaplus.mcp.port": 59071
 }
