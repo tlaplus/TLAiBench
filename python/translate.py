@@ -176,6 +176,7 @@ class TLATranslator:
                 
                 config = {
                     "tlaplus_mcp_server": {
+                        "allow_all_keys": True,
                         "url": self.mcp_url,
                         "transport": MCPTransport.http,
                     }
@@ -1138,13 +1139,25 @@ async def test_mcp_connection(mcp_url: str = "http://localhost:59071/mcp"):
         mcp_server_manager = MCPServerManager()
         config = {
             "tlaplus_mcp_server": {
+                "allow_all_keys": True,
+
                 "url": mcp_url,
                 "transport": MCPTransport.http,
             }
         }
         await mcp_server_manager.load_servers_from_config(config)
         logger.info("✅ MCP server manager configured successfully!")
-        
+
+        mcp_server_ids = mcp_server_manager.get_all_mcp_server_ids()
+        logger.info(f"🔧 Available MCP servers ({len(mcp_server_ids)}):")
+        for server_id in mcp_server_ids:
+            logger.info(f"  - {server_id}")
+
+        mcp_servers = await mcp_server_manager.get_allowed_mcp_servers()
+        logger.info(f"🔧 Available MCP servers ({len(mcp_servers)}):")
+        for server in mcp_servers:
+            logger.info(f"  - {server}")
+            
         # List available tools
         tools_result = await mcp_server_manager.list_tools()
         logger.info(f"🔧 Available tools ({len(tools_result)}):")

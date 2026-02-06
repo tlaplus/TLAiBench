@@ -56,7 +56,18 @@
                 "github/gpt-4.1",
                 "--debug"
             ],
- 
+        },
+        {
+            "name": "Python Debugger: Test-MCP",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "python/translate.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--test-mcp",
+                "--debug"
+            ],
         }
     ]
 }
