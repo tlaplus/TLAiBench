@@ -101,6 +101,7 @@ from litellm.proxy._experimental.mcp_server.mcp_server_manager import (
     MCPServerManager,
     MCPTransport,
 )
+from litellm.proxy._experimental.mcp_server.utils import split_server_prefix_from_name
 
 # Configure logging
 logging.basicConfig(
@@ -795,6 +796,15 @@ You have access to tools for TLA+ development including parsing, model checking,
                     except json.JSONDecodeError as e:
                         logger.warning(f"⚠️ Failed to parse tool arguments: {e}")
                         tool_args = {}
+                    
+                    # Strip server prefix if present (e.g., "tlaplus_mcp_server-write_file" -> "write_file")
+                    # LiteLLM automatically prefixes tool names with server name to avoid collisions
+                    # between multiple MCP servers, but the actual MCP server expects unprefixed names.
+                    # This behavior was introduced in LiteLLM commit 48579eafe3 (Dec 13, 2025).
+                    unprefixed_name, prefixed_server_name = split_server_prefix_from_name(tool_name)
+                    if unprefixed_name and prefixed_server_name:
+                        logger.debug(f"🔧 Stripping server prefix: {tool_name} -> {unprefixed_name}")
+                        tool_name = unprefixed_name
                     
                     logger.info(f"🔧 Calling tool: {tool_name} with {tool_args}")
                     
